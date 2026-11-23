@@ -1,0 +1,17 @@
+.artifacts/
+.venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+.DS_Store
+/.agents/
+/.dynamic-skills/
+/.code-review-graph/
+
+.ruff_cache/
+.mypy_cache/
+build/
+dist/
+*.egg-info/

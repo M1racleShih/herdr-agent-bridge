@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "herdr-agent-bridge"
+version = "0.1.0"
+description = "Local coding-agent task bridge over herdr-core"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Programming Language :: Python :: 3 :: Only",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/M1racleShih/herdr-agent-bridge"
+Repository = "https://github.com/M1racleShih/herdr-agent-bridge"
+Issues = "https://github.com/M1racleShih/herdr-agent-bridge/issues"
+
+[project.scripts]
+herdr-bridge = "herdr_agent_bridge.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff==0.14.5",
+    "mypy==1.18.2",
+    # Match the PEP 517 backend pins for the locked distribution check.
+    "setuptools==80.9.0",
+    "wheel==0.45.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"herdr_agent_bridge.resources" = ["*.mjs", "*.json"]
+"herdr_agent_bridge.resources.hermes_project_registration" = ["plugin.yaml"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".artifacts"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/herdr_agent_bridge/bridge_common.py", "src/herdr_agent_bridge/bridge_protocol.py", "src/herdr_agent_bridge/development_task.py"]
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "herdr_agent_bridge.bridge_common"
+disallow_untyped_defs = true
+disallow_any_generics = true
+warn_return_any = true
+
+[tool.setuptools.data-files]
+"share/herdr-agent-bridge/skills/herdr-agent-bridge" = ["skills/herdr-agent-bridge/SKILL.md"]
+"share/herdr-agent-bridge/skills/herdr-agent-bridge/references" = ["skills/herdr-agent-bridge/references/*.md"]

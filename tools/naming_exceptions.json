@@ -1,0 +1,47 @@
+[
+  {
+    "path": "src/herdr_agent_bridge/runtime_paths.py",
+    "line": "LEGACY_RUNS = Path(\".artifacts/phase2\")",
+    "reason": "Recognize existing persisted Manager/project/outbox pointers only; new creation rejects this directory."
+  },
+  {
+    "path": "src/herdr_agent_bridge/app_session.py",
+    "line": "LEGACY_APP_TERMINAL_NAME = \"phase3-app\"",
+    "reason": "Missing-field historical App records must verify and clean the original terminal identity."
+  },
+  {
+    "path": "tests/test_installed_cli.py",
+    "line": "for name in (\"accept_phase1\", \"render_phase1_report\"):",
+    "reason": "Assert removed historical public commands are refused; no compatibility alias is provided."
+  },
+  {
+    "path": "docs/INSTALL.md",
+    "line": "Existing `.artifacts/phase2/` runs, configurations, journals and outboxes remain at their original paths;",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  },
+  {
+    "path": "docs/INSTALL.md",
+    "line": "Historical `.artifacts/phase1/` and `.artifacts/phase5/` acceptance reports remain in place.",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  },
+  {
+    "path": "docs/INSTALL.md",
+    "line": "the original `phase3-app` terminal name. Cleanup also matches the saved terminal address and App",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  },
+  {
+    "path": "docs/INSTALL.zh-CN.md",
+    "line": "已有 `.artifacts/phase2/` run 与其配置、journal、outbox 原位继续使用；新建 run",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  },
+  {
+    "path": "docs/INSTALL.zh-CN.md",
+    "line": "使用原身份。历史 `.artifacts/phase1/`、`.artifacts/phase5/` 验收报告保留原位，",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  },
+  {
+    "path": "docs/INSTALL.zh-CN.md",
+    "line": "字段的历史记录仅按 `phase3-app` 核对原终端。清理还必须匹配保存的终端地址",
+    "reason": "Document bounded historical input reading and original terminal identity; not a new output or command alias."
+  }
+]
