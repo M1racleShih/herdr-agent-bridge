@@ -1,0 +1,49 @@
+name: Publish a GitHub release to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published GitHub release tag (for example, v0.1.0)
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: pypi-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref_name == github.event.repository.default_branch && github.ref_type == 'branch'
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+        with:
+          version: '0.13.9'
+          enable-cache: false
+      - name: Fetch and verify the existing release distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9][0-9a-zA-Z.+!-]*$ ]]
+          published_tag=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft --jq 'select(.isDraft == false) | .tagName')
+          [[ "$published_tag" == "$TAG" ]]
+          wheel="herdr_agent_bridge-${TAG#v}-py3-none-any.whl"
+          sdist="herdr_agent_bridge-${TAG#v}.tar.gz"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist \
+            --pattern "$wheel" --pattern "$sdist" --pattern SHA256SUMS
+          cd dist
+          sha256sum -- "$wheel" "$sdist" | sort > computed
+          sort SHA256SUMS | diff -u - computed
+      - name: Publish the verified files with PyPI Trusted Publishing
+        run: uv publish --trusted-publishing always --check-url https://pypi.org/simple/ dist/*.whl dist/*.tar.gz
