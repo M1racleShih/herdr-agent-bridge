@@ -36,10 +36,10 @@ If `herdr-bridge` already exists, check `herdr-bridge --version` and its locatio
 
 ## Install version 0.1.0
 
-The first PyPI upload is pending. Install the verified 0.1.0 GitHub Release wheel now. Once 0.1.0 is on PyPI, the equivalent command is `uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`.
+Use uv to install version 0.1.0 from [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.0/).
 
 ```sh
-uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help

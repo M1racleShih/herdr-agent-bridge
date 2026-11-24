@@ -37,11 +37,11 @@ sequenceDiagram
 
 Bridge 需要单独安装的运行时 **herdr-core**，它提供 [`hc` 命令](https://github.com/herdrdev/herdr-core#install)。请在运行编码会话的机器上单独安装它，并将 `hc` 加入 PATH。Bridge 使用 `hc` 创建和控制终端，Linux 实测版本为 `0.1.22`。Python CLI 由 [uv](https://docs.astral.sh/uv/getting-started/installation/) 安装管理。
 
-PyPI 首次发布前，请用下面的命令安装 GitHub Release 上已核验的 0.1.0 wheel。0.1.0 上架 PyPI 后，可按包名安装：`uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`。
+使用 uv 从 [PyPI](https://pypi.org/project/herdr-agent-bridge/) 安装命令行工具。
 
 ```sh
 hc --version
-uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+uv tool install herdr-agent-bridge
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"

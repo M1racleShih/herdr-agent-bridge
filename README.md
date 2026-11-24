@@ -37,11 +37,11 @@ sequenceDiagram
 
 Install the **required runtime** [herdr-core](https://github.com/herdrdev/herdr-core#install) on the machine that runs the coding sessions. The bridge uses its `hc` executable to open and control terminals. The tested Linux baseline is `hc 0.1.22`. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) to manage the Python CLI.
 
-The first PyPI upload is pending. Install the verified 0.1.0 GitHub Release wheel now. Once 0.1.0 is on PyPI, the equivalent command is `uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`.
+Use uv to install the CLI from [PyPI](https://pypi.org/project/herdr-agent-bridge/).
 
 ```sh
 hc --version
-uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+uv tool install herdr-agent-bridge
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"

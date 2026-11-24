@@ -36,10 +36,10 @@ hc --version
 
 ## 安装 0.1.0
 
-PyPI 首次发布前，请用下面的命令安装 GitHub Release 上已核验的 0.1.0 wheel。0.1.0 上架 PyPI 后，可按包名安装：`uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`。
+使用 uv 从 [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.0/) 安装固定版本。
 
 ```sh
-uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help
