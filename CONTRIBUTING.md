@@ -169,3 +169,7 @@ The `naming` gate checks filenames and text for development-stage names. Narrow
 historical-input exceptions are recorded as exact lines with reasons in
 `tools/naming_exceptions.json`; new public aliases and output paths are not exceptions.
 Protocol state fields named `phase` and upstream version numbers are unchanged.
+
+## Publish a release to PyPI
+
+After the wheel, sdist and `SHA256SUMS` are attached to a published GitHub release, run **Publish a GitHub release to PyPI** on the default branch with that release tag. The workflow checks both files against the release checksums and uploads the same files using PyPI Trusted Publishing. Configure the PyPI GitHub publisher for this repository with workflow `publish-pypi.yml` and environment `pypi`.

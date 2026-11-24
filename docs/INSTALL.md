@@ -2,7 +2,7 @@
 
 [简体中文](INSTALL.zh-CN.md) · [README](../README.md) · [Operating guide](PROJECT.md)
 
-Herdr Agent Bridge 0.1.0 needs Python 3.11 or later and [herdr-core (`hc`)](https://github.com/herdrdev/herdr-core#install). The no-model smoke below supports Linux and macOS; see the [support matrix](../README.md#compatibility) for the scope of actual validation. The Python package has no runtime dependencies outside the standard library.
+Install the **required runtime** [herdr-core](https://github.com/herdrdev/herdr-core#install) separately on the host running Bridge and the coding sessions. Bridge invokes its `hc` executable through `PATH` to control terminals. Linux integrations were tested with `hc 0.1.22`. Bridge itself needs Python 3.11+ and uses only the Python standard library at runtime. The no-model smoke supports Linux and macOS. See the [support matrix](../README.md#compatibility).
 
 For Pi development, also install [Node.js](https://nodejs.org/en/download) and [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent); for Codex development, install the [Codex CLI](https://github.com/openai/codex). Both need working model access and native authentication. None is needed for the no-model smoke.
 
@@ -10,32 +10,37 @@ For Pi development, also install [Node.js](https://nodejs.org/en/download) and [
 
 Copy this instruction to an agent with access to your machine:
 
-> Install herdr-agent-bridge 0.1.0 by following https://github.com/M1racleShih/herdr-agent-bridge/blob/v0.1.0/docs/INSTALL.md. Check existing installations first and run the no-model smoke. Ask before logging in, incurring model costs, changing global settings or skills, or using an existing session. Do not start a model task without my authorization.
+> Install herdr-agent-bridge 0.1.0 by following https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.md. Check existing installations first and run the no-model smoke. Ask before logging in, incurring model costs, changing global settings or skills, or using an existing session. Do not start a model task without my authorization.
 
-The pinned guide and Git tag identify the intended version; review the source and any installer according to your usual policy. Installing an Agent skill is optional and has a separate step below.
+The commands below install version 0.1.0. Installing the bundled agent skill is optional.
 
 ## Check the environment
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), [Python 3.11+](https://www.python.org/downloads/), [Git](https://git-scm.com/install/) and [hc](https://github.com/herdrdev/herdr-core#install) if missing. Git is needed to install from the tag; uv can also obtain a compatible Python. First inspect what is already installed:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) if needed. uv can obtain Python 3.11. Check your tools first.
 
 ```sh
 uv --version
-git --version
 hc --version
 command -v herdr-bridge || true
 uv tool list
+```
+
+If `hc` is missing, the upstream Linux and macOS installer is:
+
+```sh
+curl -fsSL https://releases.herdr.dev/core/install.sh | sh
+hc --version
 ```
 
 If `herdr-bridge` already exists, check `herdr-bridge --version` and its location. Reconcile active runs before replacing an installation: their background observers use the original Python environment until cleanup. Avoid overwriting a different installation without deciding how to preserve it.
 
 ## Install version 0.1.0
 
-This installs the tagged source into a uv-managed tool environment and exposes `herdr-bridge` in uv's tool bin directory. uv can download Python 3.11 and build dependencies if they are missing.
+The first PyPI upload is pending. Install the verified 0.1.0 GitHub Release wheel now. Once 0.1.0 is on PyPI, the equivalent command is `uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`.
 
 ```sh
-uv tool install --python 3.11 'git+https://github.com/M1racleShih/herdr-agent-bridge.git@v0.1.0'
-uv tool dir
-uv tool dir --bin
+uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help
 ```

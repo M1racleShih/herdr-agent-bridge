@@ -35,10 +35,13 @@ sequenceDiagram
 
 ## 在本机试用
 
-先安装 [uv](https://docs.astral.sh/uv/getting-started/installation/) 和 [herdr-core](https://github.com/herdrdev/herdr-core#install)（`hc`），确保 Git 在 PATH 中，然后运行：
+Bridge 需要单独安装的运行时 **herdr-core**，它提供 [`hc` 命令](https://github.com/herdrdev/herdr-core#install)。请在运行编码会话的机器上单独安装它，并将 `hc` 加入 PATH。Bridge 使用 `hc` 创建和控制终端，Linux 实测版本为 `0.1.22`。Python CLI 由 [uv](https://docs.astral.sh/uv/getting-started/installation/) 安装管理。
+
+PyPI 首次发布前，请用下面的命令安装 GitHub Release 上已核验的 0.1.0 wheel。0.1.0 上架 PyPI 后，可按包名安装：`uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`。
 
 ```sh
-uv tool install --python 3.11 'git+https://github.com/M1racleShih/herdr-agent-bridge.git@v0.1.0'
+hc --version
+uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
@@ -46,7 +49,7 @@ herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 
 预期看到 `herdr-bridge 0.1.0`，以及包含 `"passed": true` 的 JSON。这个示例向本机小程序提交任务、追加一轮，确认阻塞状态下会拒绝输入，并清理自己的终端。无需 Bot、模型或 API 密钥。每次运行都把报告写入一个新的临时目录，并输出路径。
 
-**也可以把这句话发给你的 Agent：**“按 [v0.1.0 安装指南](https://github.com/M1racleShih/herdr-agent-bridge/blob/v0.1.0/docs/INSTALL.zh-CN.md) 用 uv 安装 CLI，运行本地 smoke。先给我看版本和检查结果，再接 Bot 或调用模型。”
+**也可以把这句话发给你的 Agent：**“按 [安装指南](https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.zh-CN.md) 用 uv 安装 CLI，运行本地 smoke。先给我看版本和检查结果，再接 Bot 或调用模型。”
 
 第一次跑真实编码任务时，选一个已完成认证的 Pi 或 Codex CLI，并准备一个临时 Git 项目。按[项目操作指南](docs/PROJECT.zh-CN.md)登记检查、限定文件范围、提交一轮并核验结果。[安装指南](docs/INSTALL.zh-CN.md)还说明了怎样安装 Release 中的 wheel 和定位随包分发的 Agent skill。
 

@@ -98,3 +98,7 @@ CI 通过同一 `tools/check.py` 入口分别运行 `lint`、`format`、`types`�
 Mypy 当前检查 `bridge_common`、`bridge_protocol` 和 `development_task`，正常跟随导入并检查无类型函数内部。持久化和 hc 传输要求完整签名并拒绝未参数化泛型；策略选择及核验票据约束模型和状态边界。动态 journal 字典、大部分状态方法、适配器和 CLI 模块仍是渐进类型工作，并非全面 strict 覆盖；不使用忽略缺失导入或跳过导入的替代方式。
 
 `naming` 门禁检查文件名和文本中的开发阶段名称。精确历史输入例外及理由记录在 `tools/naming_exceptions.json`；新公共别名或输出路径不能列为例外。协议状态字段 `phase` 和上游版本号不变。
+
+## 将发布包上传至 PyPI
+
+GitHub Release 发布并附上 wheel、sdist 和 `SHA256SUMS` 后，在默认分支手动运行 **Publish a GitHub release to PyPI**，输入该版本的 tag。工作流先校验两份附件，再通过 PyPI Trusted Publishing 上传原文件。在 PyPI 为本仓库绑定 GitHub 发布者时，工作流文件填 `publish-pypi.yml`，环境填 `pypi`。

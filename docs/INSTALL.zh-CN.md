@@ -2,7 +2,7 @@
 
 [English](INSTALL.md) · [README](../README.zh-CN.md) · [操作指南](PROJECT.zh-CN.md)
 
-Herdr Agent Bridge 0.1.0 需要 Python 3.11 或更高版本和 [herdr-core（`hc`）](https://github.com/herdrdev/herdr-core#install)。下面的无模型 smoke 支持 Linux 和 macOS；实际验证范围见[支持矩阵](../README.zh-CN.md#compatibility)。Python 包在运行时仅依赖标准库。
+Bridge 的**必需运行时**是 [herdr-core](https://github.com/herdrdev/herdr-core#install)。请在运行 Bridge 和编码会话的机器上安装它。Bridge 通过 PATH 查找并调用它提供的 `hc`，用来控制本机终端。Linux 集成实测使用 `hc 0.1.22`。Bridge 本身需要 Python 3.11+，Python 运行时仅使用标准库。无模型 smoke 支持 Linux 和 macOS，详见[支持矩阵](../README.zh-CN.md#compatibility)。
 
 使用 Pi 开发还需要 [Node.js](https://nodejs.org/en/download) 和 [Pi](https://github.com/earendil-works/pi/tree/main/packages/coding-agent)；使用 Codex 开发需要 [Codex CLI](https://github.com/openai/codex)。两者都需要可用的模型访问和原生认证。无模型 smoke 不需要它们。
 
@@ -10,32 +10,37 @@ Herdr Agent Bridge 0.1.0 需要 Python 3.11 或更高版本和 [herdr-core（`hc
 
 可以把以下指令交给能够访问本机的 Agent：
 
-> 请按照 https://github.com/M1racleShih/herdr-agent-bridge/blob/v0.1.0/docs/INSTALL.zh-CN.md 安装 herdr-agent-bridge 0.1.0。先检查已有安装，再运行无模型 smoke。登录、产生模型费用、更改全局配置或 skills、使用已有会话之前请先征得我的授权；未经授权不要启动模型任务。
+> 请按照 https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.zh-CN.md 安装 herdr-agent-bridge 0.1.0。先检查已有安装，再运行无模型 smoke。登录、产生模型费用、更改全局配置或 skills、使用已有会话之前请先征得我的授权；未经授权不要启动模型任务。
 
-固定版本的指南和 Git tag 指明了目标版本；请按自己的惯例审阅源码和安装程序。安装 Agent skill 是下方单独的可选步骤。
+以下命令安装 0.1.0。随包提供的 Agent skill 可以按需安装。
 
 ## 检查环境
 
-如果缺少工具，先安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)、[Python 3.11+](https://www.python.org/downloads/)、[Git](https://git-scm.com/install/) 和 [hc](https://github.com/herdrdev/herdr-core#install)。从 tag 安装需要 Git；uv 也可以获取兼容的 Python。先检查现有安装：
+先准备好 [uv](https://docs.astral.sh/uv/getting-started/installation/)，它可以获取 Python 3.11。检查本机工具：
 
 ```sh
 uv --version
-git --version
 hc --version
 command -v herdr-bridge || true
 uv tool list
+```
+
+如果找不到 `hc`，Linux 和 macOS 可使用上游提供的安装命令：
+
+```sh
+curl -fsSL https://releases.herdr.dev/core/install.sh | sh
+hc --version
 ```
 
 如果已有 `herdr-bridge`，检查其路径和 `herdr-bridge --version`。替换安装前先核对活动 run：后台观察器在清理前仍使用原来的 Python 环境。决定如何保留其他安装后再覆盖。
 
 ## 安装 0.1.0
 
-下面从固定 tag 将源码安装到 uv 管理的工具环境，并在 uv 工具可执行目录提供 `herdr-bridge`。如果缺少 Python 3.11 或构建依赖，uv 可能下载它们。
+PyPI 首次发布前，请用下面的命令安装 GitHub Release 上已核验的 0.1.0 wheel。0.1.0 上架 PyPI 后，可按包名安装：`uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'`。
 
 ```sh
-uv tool install --python 3.11 'git+https://github.com/M1racleShih/herdr-agent-bridge.git@v0.1.0'
-uv tool dir
-uv tool dir --bin
+uv tool install --python 3.11 'https://github.com/M1racleShih/herdr-agent-bridge/releases/download/v0.1.0/herdr_agent_bridge-0.1.0-py3-none-any.whl'
+export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help
 ```

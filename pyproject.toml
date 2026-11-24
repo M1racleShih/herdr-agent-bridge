@@ -25,6 +25,7 @@ classifiers = [
 dependencies = []
 
 [project.urls]
+"Required runtime: herdr-core" = "https://github.com/herdrdev/herdr-core#install"
 Homepage = "https://github.com/M1racleShih/herdr-agent-bridge"
 Repository = "https://github.com/M1racleShih/herdr-agent-bridge"
 Issues = "https://github.com/M1racleShih/herdr-agent-bridge/issues"
