@@ -4,34 +4,25 @@
 
 <img src="assets/brand/beaver.png" width="144" height="144" alt="小海狸站在桥上递出一封信">
 
-从 Hermes 或 Grok 对话里，让本机的 Pi 或 Codex 改代码。你在对话里提需求，编码 Agent 在本机终端工作，改了哪些文件、检查有没有通过，都能回到发起任务的原对话。
+**让你的 Personal Agent 在原生终端里操作另一个 Agent。** 在 Herdr App 中，你和 Personal Agent 可以先后操作同一个编码会话。编码 Agent 继续使用自己的工具和配置。Personal Agent 可以派任务、看改动、决定下一轮问什么，你也能打开那个终端，随时接手。
+
+![实测的 Hermes Agent 和 Grok Bot 都能通过 bridge 将任务交给 Herdr 中的 Pi 或 Codex CLI，并在原聊天里收到结果。](assets/brand/illustrations/bridge-overview.zh-CN.png)
+
+## 为什么做这个项目
+
+我平时就在 Herdr App 里开发。编码 Agent 修完一个问题，我通常会看一眼 diff 和测试输出，再决定要不要让它补一个边界用例。我想做一个自己的 Personal Agent，能像我一样判断下一步，并直接在我用的终端里操作。这个 bridge 让它能看到判断所需的证据，也让它能回到原会话，把下一步做下去。
 
 ## 一次任务如何往返
 
-```mermaid
-sequenceDiagram
-    actor User as 用户
-    participant Chat as Hermes 或 Grok
-    participant Bridge as 本机 Bridge
-    participant Agent as hc 中的 Pi 或 Codex
-    User->>Chat: 修复上界判断，运行单元测试
-    Chat->>Bridge: 在绑定的项目中创建请求
-    Bridge->>Agent: 提交本轮任务
-    Agent-->>Bridge: 返回与本轮关联的证据
-    Bridge-->>Chat: 唤醒发起任务的对话
-    Chat->>Bridge: 读取改动并运行登记的检查
-    Chat-->>User: 汇报改动和测试结果
-    User->>Chat: 再加一个上下界相等的测试
-    Chat->>Bridge: 继续原请求
-    Bridge->>Agent: 在同一会话内追加任务
-```
+![Hermes 把上界错误交给 Herdr 中的 Pi。Pi 回原聊天确认要测负数区间的哪一端，在同一会话补测，最后由 Hermes 核验并回报两项测试通过。](assets/brand/illustrations/bridge-in-action.zh-CN.png)
 
 | 你想做的事 | Bridge 能帮什么忙 |
 | --- | --- |
+| 使用原生终端界面（TUI）的功能 | 把终端绑定到 Herdr App 的工作空间。Personal Agent 可以在这里发送已支持的原生命令，例如用 `/name` 给 Pi 会话命名，用 `/fast` 开启 Codex Fast。你能在同一个终端看到操作效果。 |
 | 沿着一次修复继续追问 | 请求保留原生会话和父轮次。可以直接追加要求，省去复制前一轮上下文。 |
 | 核实 Agent 的改动 | Bridge 把工作区与基线比较，检查文件范围，并记录指定命令的退出码。接受改动前就能看到依据。 |
 | 同时推进两个项目 | 独立项目可并行。启用共享任务占位后，同一项目一次只处理一个开发任务，防止两个已绑定入口同时写入。 |
-| 中途接手或断线恢复 | 暂停自动输入，在原终端查看或接管，再核对会话并交还。发送超时后可以先查原请求，避免重复派单。 |
+| 中途接手或断线恢复 | 暂停自动输入，在原终端亲自操作，核对会话状态后再交还。权限和信任提示由人处理。发送超时后可以先查原请求，避免重复派单。 |
 
 ## 在本机试用
 
@@ -55,7 +46,12 @@ herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 
 <a id="compatibility"></a>
 
-## 兼容范围
+## 哪些 Agent 可以协作？
+
+原则上，只要一个 Agent 能调用项目入口，另一个 Agent 的会话有对应适配器，两者就可以通过 bridge 协作。这个项目首先解决的是软件开发场景。**Personal Agent** 通过获授权的项目入口管理任务，**编码 Agent** 在自己的原生会话里执行。接入新的管理端，需要让它调用项目入口，并能接收执行结果。接入新的执行端，需要适配它的启动方式、输入目标和原生回复，确保每次操作都落在正确的会话里。
+
+- **已实测的 Personal Agent** 有 Hermes Agent（Desktop Bot Chat）和 Grok Bot。两者都分别向下表中的两个编码 Agent 派过单，并在原对话收到经核验的结果。
+- **0.1.0 当前支持的编码 Agent** 有 Pi 和 Codex CLI。下表列出各适配器支持的运行模式，以及 Personal Agent 可通过 bridge 发送的原生命令。
 
 | 运行模式 | Pi | Codex CLI |
 | --- | --- | --- |
@@ -64,9 +60,9 @@ herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 | 使用受限 SDK 工具集开发 | 支持 | 不支持 |
 | 通过 Bridge 发送原生命令 | `/name` | `/fast`、`/goal`、`/model` |
 
-Linux 集成实测涵盖 herdr-core 0.1.22、Pi 1.5.2 和 Codex CLI 0.171.0。Hermes Desktop 和 Grok Bot 都已分别向两个原生 Agent 派单，并在原对话收到经核验的结果。Hermes 走本机中继，Grok 需要在线的桌面设备和 HTTPS 例程。设备断连会影响回调处理。
+Linux 集成实测涵盖 herdr-core 0.1.22、Pi 1.5.2 和 Codex CLI 0.171.0。Hermes 走本机中继，Grok 需要在线的桌面设备和 HTTPS 例程。设备断连会影响回调处理。
 
-需要 Python 3.11+。本地 smoke 支持 Linux、macOS 的 POSIX 终端；真实 Agent 集成在 Linux 上实测。Pi 需要 Node.js，结果关联适用于较短的线性会话。分支、上下文压缩或不支持的上下文编辑可能导致核验停止。欢迎贡献其他 Agent 的适配。
+需要 Python 3.11+。本地 smoke 支持 Linux、macOS 的 POSIX 终端；真实 Agent 集成在 Linux 上实测。Pi 需要 Node.js，结果关联适用于较短的线性会话。分支、上下文压缩或不支持的上下文编辑可能导致核验停止。我们计划接入更多 Personal Agent 和编码 Agent。贡献新接入时，可从[管理端项目绑定](docs/PROJECT.zh-CN.md)或[编码 Agent 适配指南](docs/DEVELOPMENT.zh-CN.md#新增-agent-适配)开始。
 
 ## 使用指南
 
