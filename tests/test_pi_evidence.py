@@ -422,6 +422,25 @@ class PiEvidenceTests(unittest.TestCase):
                 result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
                 self.assertFalse(result["lead"]["agent_completed"], label)
 
+    def test_two_pack_bash_calls_allow_command_alone_but_not_unknown_or_invalid_arguments(self):
+        for extra, expected in (
+            ({}, True),
+            ({"timeout": None}, False),
+            ({"timeout": True}, False),
+            ({"cwd": "/other"}, False),
+        ):
+            with self.subTest(extra=extra):
+                submitted = native_development_task()
+                records = two_pack_history(submitted["submitted_text"])
+                for record in records:
+                    if record["id"] in ("init", "binding-call", "complete-call"):
+                        arguments = record["message"]["content"][0]["arguments"]
+                        del arguments["timeout"]
+                        arguments.update(extra)
+                self.write(records)
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertEqual(result["lead"]["agent_completed"], expected)
+
     def test_two_pack_initialization_accepts_the_recorded_local_variable_form(self):
         submitted, records = self.history_with_pack_init(PACK)
         init = next(item for item in records if item["id"] == "init")
@@ -537,6 +556,14 @@ class PiEvidenceTests(unittest.TestCase):
                 lambda s: s["assignments"]["coder:1"].update(target="other"),
             ),
             "wrong baseline": ("complete-output", lambda s: s.update(baseline="f" * 40)),
+            "other assignment input": (
+                "complete-output",
+                lambda s: s["assignments"]["cleaner:1"].update(input_commit="f" * 40),
+            ),
+            "other source receipt": (
+                "complete-output",
+                lambda s: s["assignments"]["cleaner:1"].update(source_receipt=17),
+            ),
             "missing accepted receipt": (
                 "complete-output",
                 lambda s: s["assignments"]["cleaner:1"].update(receipt=None),

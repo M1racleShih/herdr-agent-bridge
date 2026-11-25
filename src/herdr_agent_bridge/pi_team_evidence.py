@@ -48,16 +48,17 @@ def _path(value):
 
 def _command(arguments):
     """Recognize only the observed init and resume command forms; do not execute them."""
-    if not isinstance(arguments, dict) or set(arguments) != {"command", "timeout"}:
-        return None
-    command, timeout = arguments["command"], arguments["timeout"]
-    if (
-        not isinstance(command, str)
-        or len(command) > 4096
-        or any(c in command for c in "`\\\n\r")
-        or type(timeout) not in (int, float)
-        or not 0 < timeout <= 300
+    if not isinstance(arguments, dict) or set(arguments) not in (
+        {"command"},
+        {"command", "timeout"},
     ):
+        return None
+    if "timeout" in arguments:
+        timeout = arguments["timeout"]
+        if type(timeout) not in (int, float) or not 0 < timeout <= 300:
+            return None
+    command = arguments["command"]
+    if not isinstance(command, str) or len(command) > 4096 or any(c in command for c in "`\\\n\r"):
         return None
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=";|")
@@ -404,6 +405,22 @@ def _accepted(binding, completed, notices):
             return False
         receipt_ids.update(ids)
         receipts[role] = receipt
+    # Plain resume exposes the assignment handoff as well as the two receipts.
+    # A conflicting source or input commit cannot corroborate that handoff.
+    if "project" in completed:
+        for assignment in assignments:
+            role = assignment["role"]
+            source = assignment.get("source_receipt")
+            if (
+                "source_receipt" not in assignment
+                or assignment.get("input_commit") != receipts[role]["result"].get("input_commit")
+                or (role == "coder" and source is not None)
+                or (
+                    role == "cleaner"
+                    and (type(source) is not int or source != receipts["coder"]["id"])
+                )
+            ):
+                return False
     coder_result, cleaner_result = (receipts[role]["result"] for role in ("coder", "cleaner"))
     commits = (
         completed.get("baseline"),
