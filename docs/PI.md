@@ -114,9 +114,21 @@ the linear history must first show one successful initialization bound to the
 original input and the session's working directory, followed by a matching
 pack/worker binding before the first notification. Matching, non-error tool calls and structured results must also
 corroborate the accepted receipts. The recognized snapshots include the direct
-structured resume and the observed projected form; other formats remain
-uncorrelated. Unrelated terminal inventory entries do not change the workers.
-The final must be a result for the original task. An independent input,
+structured resume and supported projected forms; other formats remain
+uncorrelated. A retry can follow the specifically recognized pre-init worker
+preflight only when a bounded, statically read-only guard and its matching
+native assertion failure indicate that the helper was not reached. A later
+nonzero exit alone is not sufficient. Calls and results in the continuation
+must be paired; unrecognized or conflicting pack operations do not qualify.
+The guard and supported verification commands are inspected structurally, not
+executed or expanded; unknown command forms remain uncorrelated. For the guarded
+relative-store form, the recorded store must also match the session directory's
+literal path components; paths are not resolved from transcript text. The
+projected retry additionally requires the dispatched Coder binding and both
+accepted receipt identities, workers and available commits to agree with the
+final structured result. Read-only polls and unrelated terminal inventory
+entries do not change the workers. The final must be a result for the original
+task. An independent input,
 uncertain or mismatched receipt, question, or an existing bounded final does
 not qualify. The original user entry remains the turn ID; the actual final
 assistant entry remains the final message ID. Isolated Pi and ordinary direct

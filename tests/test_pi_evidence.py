@@ -265,6 +265,183 @@ def two_pack_history(submitted, task_id="lead", kind="result"):
     return relink(records)
 
 
+def retry_pack_history(submitted, task_id="lead"):
+    """Failed preflight, guarded init, dispatch and independently projected receipts."""
+    records = two_pack_history(submitted, task_id)
+    by_id = {item["id"]: item for item in records}
+    helper = "/fixture/scripts/handoff.py"
+    store = '"$(realpath ../store)"'
+    init_suffix = (
+        f'python3 "$helper" {store} two init --project "$PWD" '
+        '--card "$(realpath ../card)" --checks "$(realpath ../checks)" '
+        "--coder worker1 --cleaner worker2"
+    )
+    preflight = (
+        'set -e; for peer in worker1 worker2; do proc=$(hc get "$peer" --json | jq -r .foreground.pid); '
+        'python3 - "$proc" "$peer" <<\'GUARD\'\n'
+        "# Synthetic, read-only guard.\n"
+        'for label in ("READY", "BLOCK"):\n'
+        '    assert label != "BLOCK", label\n'
+        "GUARD\n"
+        f'done; test  -z "$(git status --porcelain)"; python3 {helper} "$PWD/../store" '
+        'two init --project "$PWD" --card "$PWD/../card" --checks "$PWD/../checks" '
+        "--coder worker1 --cleaner worker2"
+    )
+
+    def call(identifier, command):
+        return assistant(
+            identifier,
+            None,
+            [
+                {
+                    "type": "toolCall",
+                    "id": identifier + "-call",
+                    "name": "bash",
+                    "arguments": {"command": command},
+                }
+            ],
+            "toolUse",
+        )
+
+    def output(identifier, call_id, text, error=False):
+        return entry(
+            identifier,
+            None,
+            "toolResult",
+            [{"type": "text", "text": text}],
+            toolCallId=call_id + "-call",
+            toolName="bash",
+            isError=error,
+        )
+
+    preflight_result = (
+        'Traceback (most recent call last):\n  File "<stdin>", line 3, in <module>\n'
+        "AssertionError: BLOCK\n\n\nCommand exited with code 1"
+    )
+    index = records.index(by_id["init"])
+    records[index:index] = [
+        call("preflight", preflight),
+        output("preflight-output", "preflight", preflight_result, True),
+    ]
+    by_id["init"]["message"]["content"][0]["arguments"]["command"] = (
+        f'set -e; test -z "$(git status --porcelain)"; helper={helper}; {init_suffix}'
+    )
+    dispatch = {
+        "assignment": f"{PACK}/coder/1",
+        "target": "worker1",
+        "delivery": {"number": 1, "status": "delivered"},
+        "receipt_saved": False,
+    }
+    index = records.index(by_id["binding-call"])
+    records[index:index] = [
+        call(
+            "start",
+            f'set -e -o pipefail; helper={helper}; python3 "$helper" {store} two {PACK} start | jq -c .',
+        ),
+        output("start-output", "start", json.dumps(dispatch)),
+    ]
+    wait = {
+        "children": [],
+        "ended": False,
+        "exit_code": None,
+        "reason": "timeout",
+        "signal": None,
+        "status": "working",
+        "terminal": "worker1",
+        "turn": 0,
+    }
+    binding = {
+        "phase": "active",
+        "leader": "lead-terminal",
+        "workers": {"coder": "worker1", "cleaner": "worker2"},
+        "current": "coder:1",
+        "summary": "active",
+        "rounds": [],
+    }
+    by_id["binding-call"]["message"]["content"][0]["arguments"]["command"] = (
+        f'hc wait worker1 --timeout 20 --json; helper={helper}; python3 "$helper" {store} '
+        f"two {PACK} resume | jq -c '{{phase,leader,workers,current,summary,rounds:[.rounds[]? | {{role,round,status}}]}}'"
+    )
+    by_id["binding-output"]["message"]["content"][0]["text"] = "\n".join(
+        map(json.dumps, [wait, binding])
+    )
+    receipts = [
+        {
+            "role": role,
+            "round": 1,
+            "target": worker,
+            "worker": worker,
+            "receipt_id": receipt_id,
+            "status": status,
+            "commit": "c" * 40,
+            "checks": [],
+        }
+        for role, worker, receipt_id, status in (
+            ("coder", "worker1", 1, "done"),
+            ("cleaner", "worker2", 3, "pass"),
+        )
+    ]
+    completed = {
+        "id": PACK,
+        "phase": "completed",
+        "leader": "lead-terminal",
+        "workers": binding["workers"],
+        "branch": "fixture",
+        "receipts": receipts,
+    }
+    by_id["complete-call"]["message"]["content"][0]["arguments"]["command"] = (
+        f"set -euo pipefail; helper={helper}; store=$(realpath ../store); run={PACK}; "
+        'receipt=$(python3 "$helper" "$store" two "$run" resume); '
+        "printf '%s\\n' \"$receipt\" | jq -ce '{id,phase,leader,workers,branch,receipts:[.assignments[] | {role,round,target,worker:.receipt.worker,receipt_id:.receipt.id,status:.receipt.status,commit:.receipt.result.commit,checks:.receipt.result.checks}]}'; "
+        'test -n "$receipt"'
+    )
+    by_id["complete-output"]["message"]["content"][0]["text"] = (
+        json.dumps(completed) + "\nfixture checks passed\n"
+    )
+    final = {
+        "task_id": task_id,
+        "kind": "result",
+        "answer": {
+            "status": "completed",
+            "pack_id": PACK,
+            "lead_id": "lead-terminal",
+            "branch": "fixture",
+            "checked_commit": "c" * 40,
+            "signoffs": {
+                role: {"terminal_id": worker, "receipt_id": receipt_id, "status": status}
+                for role, worker, receipt_id, status in (
+                    ("coder", "worker1", 1, "done"),
+                    ("cleaner", "worker2", 3, "pass"),
+                )
+            },
+        },
+    }
+    by_id["final"]["message"]["content"][0]["text"] = json.dumps(final)
+    for identifier in ("complete-call", "complete-output"):
+        records.remove(by_id[identifier])
+    index = records.index(by_id["final"])
+    records[index:index] = [by_id["complete-call"], by_id["complete-output"]]
+    return relink(records)
+
+
+def fixture_verification_tail():
+    """Independently authored, synthetic post-projection verification shape."""
+    return (
+        "commit=$(jq -er '[.assignments[].receipt.result.commit] | unique' <<< \"$receipt\"); "
+        'test  "$(git rev-parse HEAD)" = "$commit"; test  -z "$(git status --porcelain)"; '
+        f'git diff --name-only {"b" * 40} "$commit"; '
+        "python3 - <<'CHECK'\n"
+        "import subprocess\n"
+        'for options in ([], ["--dry-run"]):\n'
+        '    argv = ["python3", "fixture_program.py", *options]\n'
+        "    observed = subprocess.run(argv, capture_output=True, text=True, timeout=4)\n"
+        "    assert observed.returncode == 0\n"
+        "CHECK\n"
+        "timeout 15 python3 -m unittest discover -s tests -v; "
+        'test  "$(git rev-parse HEAD)" = "$commit"; test  -z "$(git status --porcelain)"'
+    )
+
+
 def relink(records):
     for index, record in enumerate(records[1:], 1):
         record["parentId"] = records[index - 1]["id"] if index > 1 else None
@@ -313,6 +490,574 @@ class PiEvidenceTests(unittest.TestCase):
         result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
         self.assertEqual(audit, {"state": "matched"})
         self.assertEqual(result["lead"]["final_message_id"], "final")
+
+    def test_native_two_pack_retry_preserves_original_and_final_provenance(self):
+        submitted = native_development_task()
+        self.write(retry_pack_history(submitted["submitted_text"]))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        evidence = result["lead"]
+        self.assertTrue(evidence["agent_completed"])
+        self.assertEqual(evidence["agent_turn_id"], "original")
+        self.assertEqual(evidence["final_message_id"], "final")
+        self.assertEqual(evidence["turn_id_source"], "pi_user_message_id")
+        answer = json.loads(evidence["answer"])
+        self.assertEqual(answer["task_id"], "lead")
+        self.assertEqual(answer["answer"]["pack_id"], PACK)
+        self.assertEqual(answer["answer"]["checked_commit"], "c" * 40)
+
+    def test_retry_accepts_reordered_declarative_projections(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        by_id = {record["id"]: record for record in records}
+        binding = by_id["binding-call"]["message"]["content"][0]["arguments"]
+        binding["command"] = binding["command"].replace(
+            "{phase,leader,workers,current,summary,rounds:[.rounds[]? | {role,round,status}]}",
+            "{current, workers, phase, leader}",
+        )
+        output = by_id["binding-output"]["message"]["content"][0]
+        wait, snapshot = map(json.loads, output["text"].splitlines())
+        snapshot.pop("rounds")
+        snapshot.pop("summary")
+        output["text"] = "\n".join(map(json.dumps, (wait, snapshot)))
+        completion = by_id["complete-call"]["message"]["content"][0]["arguments"]
+        completion["command"] = completion["command"].replace(
+            "{id,phase,leader,workers,branch,receipts:[.assignments[] | {role,round,target,worker:.receipt.worker,receipt_id:.receipt.id,status:.receipt.status,commit:.receipt.result.commit,checks:.receipt.result.checks}]}",
+            "{branch,workers,leader,phase,id,receipts:[.assignments[] | {checks:.receipt.result.checks,commit:.receipt.result.commit,status:.receipt.status,receipt_id:.receipt.id,worker:.receipt.worker,target,round,role}]}",
+        )
+        self.write(records)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+
+    def test_retry_allows_horizontal_spacing_between_guard_words(self):
+        submitted = native_development_task()
+        for ident in ("preflight", "init"):
+            with self.subTest(ident=ident):
+                records = retry_pack_history(submitted["submitted_text"])
+                call = next(r for r in records if r["id"] == ident)
+                args = call["message"]["content"][0]["arguments"]
+                args["command"] = args["command"].replace("set -e;", "set  -e;", 1)
+                self.write(records)
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertEqual(result["lead"].get("final_message_id"), "final")
+
+    def test_guarded_init_accepts_only_horizontal_separation_between_argv_words(self):
+        submitted = native_development_task()
+        for separator, expected in (("  ", True), ("\t", True), ("\n", False), (";", False)):
+            with self.subTest(separator=separator):
+                records = retry_pack_history(submitted["submitted_text"])
+                call = next(r for r in records if r["id"] == "init")
+                args = call["message"]["content"][0]["arguments"]
+                args["command"] = args["command"].replace("two init", f"two{separator}init", 1)
+                self.write(records)
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertEqual(
+                    result["lead"].get("final_message_id"), "final" if expected else None
+                )
+
+    def test_two_pack_unrelated_read_only_filename_is_not_a_pack_command(self):
+        submitted = native_development_task()
+        records = two_pack_history(submitted["submitted_text"])
+        call, output = [
+            copy.deepcopy(next(r for r in records if r["id"] == key))
+            for key in ("init", "init-result")
+        ]
+        call["id"], output["id"] = "read-call", "read-result"
+        block = call["message"]["content"][0]
+        block.update(id="read-file", arguments={"command": "wc -l docs/handoff.py.md"})
+        output["message"].update(
+            toolCallId="read-file", content=[{"type": "text", "text": "5 docs/handoff.py.md"}]
+        )
+        index = next(i for i, r in enumerate(records) if r["id"] == "binding-call")
+        records[index:index] = [call, output]
+        self.write(relink(records))
+        result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(result["lead"].get("final_message_id"), "final")
+
+    def test_retry_orphan_result_indicating_another_origin_is_not_ignorable(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        index = next(i for i, r in enumerate(records) if r["id"] == "init-result")
+        orphan = copy.deepcopy(records[index])
+        orphan["id"] = "orphan-result"
+        orphan["message"]["toolCallId"] = "missing-call"
+        block = orphan["message"]["content"][0]
+        origin = json.loads(block["text"])
+        block["text"] = json.dumps({**origin, "id": "d" * 32, "run": "d" * 32})
+        records.insert(index + 1, orphan)
+        self.write(relink(records))
+        result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertFalse(result["lead"]["agent_completed"], "unpaired competing origin")
+
+    def test_retry_accepts_bounded_post_projection_verification(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        call = next(r for r in records if r["id"] == "complete-call")
+        args = call["message"]["content"][0]["arguments"]
+        args["command"] = (
+            args["command"].removesuffix('test -n "$receipt"') + fixture_verification_tail()
+        )
+        self.write(records)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"].get("final_message_id"), "final")
+
+        for label, change in (
+            ("another shell command", lambda s: s + "; echo unexpected"),
+            ("arbitrary jq input", lambda s: s.replace(" | unique'", " | inputs'")),
+            ("helper as program", lambda s: s.replace("fixture_program.py", "handoff.py")),
+            ("option is not a script", lambda s: s.replace("fixture_program.py", "-fixture.py")),
+            (
+                "premature heredoc end",
+                lambda s: s.replace("import subprocess", "CHECK\nimport subprocess"),
+            ),
+            ("arbitrary python", lambda s: s.replace("import subprocess", "import subprocess, os")),
+            ("shell execution", lambda s: s.replace("capture_output=True", "shell=True")),
+        ):
+            with self.subTest(label=label):
+                changed = copy.deepcopy(records)
+                item = next(r for r in changed if r["id"] == "complete-call")
+                arguments = item["message"]["content"][0]["arguments"]
+                arguments["command"] = change(arguments["command"])
+                self.write(changed)
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertFalse(result["lead"]["agent_completed"], label)
+
+    def test_retry_preflight_assertion_uses_its_actual_source_line(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        call = next(r for r in records if r["id"] == "preflight")
+        args = call["message"]["content"][0]["arguments"]
+        args["command"] = args["command"].replace(
+            "# Synthetic, read-only guard.\n", "# A different guard layout.\n\n"
+        )
+        output = next(r for r in records if r["id"] == "preflight-output")
+        block = output["message"]["content"][0]
+        block["text"] = block["text"].replace("line 3", "line 4")
+        self.write(records)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"].get("final_message_id"), "final")
+
+    def test_retry_without_failed_preflight_still_correlates(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        records = [r for r in records if r["id"] not in ("preflight", "preflight-output")]
+        self.write(relink(records))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+
+    def test_retry_rejects_ambiguous_ownership_and_uncorroborated_receipts(self):
+        submitted = native_development_task()
+        valid = retry_pack_history(submitted["submitted_text"])
+
+        def record(items, ident):
+            return next(item for item in items if item["id"] == ident)
+
+        def command(items, ident, change):
+            arguments = record(items, ident)["message"]["content"][0]["arguments"]
+            arguments["command"] = change(arguments["command"])
+
+        def output(items, ident, index, change):
+            block = record(items, ident)["message"]["content"][0]
+            lines = block["text"].splitlines()
+            value = json.loads(lines[index])
+            change(value)
+            lines[index] = json.dumps(value)
+            block["text"] = "\n".join(lines) + "\n"
+
+        def answer(items, change):
+            output(items, "final", 0, lambda value: change(value["answer"]))
+
+        def duplicate_init(items):
+            call = copy.deepcopy(record(items, "init"))
+            result = copy.deepcopy(record(items, "init-result"))
+            call["id"] = "second-init"
+            call["message"]["content"][0]["id"] = "second-init-call"
+            result["id"] = "second-init-result"
+            result["message"]["toolCallId"] = "second-init-call"
+            index = items.index(record(items, "start"))
+            items[index:index] = [call, result]
+
+        def add_unresolved_init(items):
+            item = copy.deepcopy(record(items, "init"))
+            item["id"] = "unresolved-init"
+            item["message"]["content"][0]["id"] = "unresolved-init-call"
+            items.insert(items.index(record(items, "start")), item)
+
+        def move(items, ident, after):
+            item = record(items, ident)
+            items.remove(item)
+            items.insert(items.index(record(items, after)) + 1, item)
+
+        cases = {
+            "not the preflight error": lambda r: record(r, "preflight-output")["message"][
+                "content"
+            ][0].update(text="Command exited with code 1"),
+            "unexplained output before the failed guard": lambda r: record(r, "preflight-output")[
+                "message"
+            ]["content"][0].update(
+                text=record(r, "init-result")["message"]["content"][0]["text"].strip()
+                + "\n"
+                + record(r, "preflight-output")["message"]["content"][0]["text"]
+            ),
+            "preflight impossible source line length": lambda r: record(r, "preflight-output")[
+                "message"
+            ]["content"][0].update(
+                text=record(r, "preflight-output")["message"]["content"][0]["text"].replace(
+                    "line 3", "line " + "9" * 5000
+                )
+            ),
+            "preflight wrong source line": lambda r: record(r, "preflight-output")["message"][
+                "content"
+            ][0].update(
+                text=record(r, "preflight-output")["message"]["content"][0]["text"].replace(
+                    "line 3", "line 2"
+                )
+            ),
+            "preflight unrelated assertion": lambda r: record(r, "preflight-output")["message"][
+                "content"
+            ][0].update(
+                text=record(r, "preflight-output")["message"]["content"][0]["text"].replace(
+                    "AssertionError: BLOCK", "AssertionError: OTHER"
+                )
+            ),
+            "preflight succeeded": lambda r: record(r, "preflight-output")["message"].update(
+                isError=False
+            ),
+            "unpaired preflight": lambda r: record(r, "preflight-output")["message"].update(
+                toolCallId="other"
+            ),
+            "preflight body changed": lambda r: command(
+                r,
+                "preflight",
+                lambda s: s.replace(
+                    '    assert label != "BLOCK", label',
+                    '    __import__("os").system("true")\n    assert label != "BLOCK", label',
+                ),
+            ),
+            "no registration": lambda r: r.__setitem__(
+                slice(None), [x for x in r if x["id"] not in ("init", "init-result")]
+            ),
+            "no independent dispatch": lambda r: r.__setitem__(
+                slice(None), [x for x in r if x["id"] not in ("start", "start-output")]
+            ),
+            "no worker binding": lambda r: r.__setitem__(
+                slice(None), [x for x in r if x["id"] not in ("binding-call", "binding-output")]
+            ),
+            "preflight may modify environment": lambda r: command(
+                r,
+                "preflight",
+                lambda s: s.replace(
+                    'for label in ("READY", "BLOCK"):',
+                    'import os\nvalues = (v for os.environ["X"] in ("Y",))\nfor label in ("READY", "BLOCK"):',
+                ),
+            ),
+            "preflight output inside assertion": lambda r: command(
+                r,
+                "preflight",
+                lambda s: s.replace(
+                    'assert label != "BLOCK", label',
+                    'assert print("not-a-guard") == label, label',
+                ),
+            ),
+            "preflight fake multi-line output": lambda r: command(
+                r,
+                "preflight",
+                lambda s: s.replace(
+                    "# Synthetic, read-only guard.", 'print("first\\nsecond\\nthird")'
+                ),
+            ),
+            "preflight may run init before failure": lambda r: command(
+                r,
+                "preflight",
+                lambda s: s.replace(
+                    "set -e; for",
+                    "python3 /fixture/scripts/handoff.py /fixture/store two init; false; for",
+                ),
+            ),
+            "failed preflight store differs": lambda r: command(
+                r, "preflight", lambda s: s.replace('"$PWD/../store"', '"$PWD/../other"')
+            ),
+            "failed preflight worker differs": lambda r: command(
+                r, "preflight", lambda s: s.replace("worker2", "other")
+            ),
+            "origin output other store": lambda r: output(
+                r,
+                "init-result",
+                0,
+                lambda x: x.update(
+                    directory="/elsewhere/store", database="/elsewhere/store/two-pack.sqlite3"
+                ),
+            ),
+            "other native project": lambda r: r[0].update(cwd="/other/project"),
+            "init failed after creating pack": lambda r: record(r, "init-result")["message"].update(
+                isError=True
+            ),
+            "init error then successful-looking output": lambda r: record(r, "init-result")[
+                "message"
+            ]["content"][0].update(text="Command exited with code 1"),
+            "extra shell after init": lambda r: command(r, "init", lambda s: s + "; false"),
+            "second successful origin": duplicate_init,
+            "second unresolved origin": add_unresolved_init,
+            "unrecognized second origin": lambda r: command(
+                r, "start", lambda s: s + '; python3 "$helper" "$store" two init'
+            ),
+            "store differs at dispatch": lambda r: command(
+                r, "start", lambda s: s.replace("../store", "../other")
+            ),
+            "helper differs at binding": lambda r: command(
+                r,
+                "binding-call",
+                lambda s: s.replace("/fixture/scripts/handoff.py", "/other/scripts/handoff.py"),
+            ),
+            "dispatch other pack": lambda r: output(
+                r, "start-output", 0, lambda x: x.update(assignment=f"{'f' * 32}/coder/1")
+            ),
+            "dispatch other worker": lambda r: output(
+                r, "start-output", 0, lambda x: x.update(target="other")
+            ),
+            "dispatch not delivered": lambda r: output(
+                r, "start-output", 0, lambda x: x["delivery"].update(status="pending")
+            ),
+            "dispatch output not paired": lambda r: record(r, "start-output")["message"].update(
+                toolCallId="other"
+            ),
+            "dispatch output is error": lambda r: record(r, "start-output")["message"].update(
+                isError=True
+            ),
+            "dispatch after notice": lambda r: move(r, "start-output", "coder-notice"),
+            "binding mismatched pack": lambda r: command(
+                r, "binding-call", lambda s: s.replace(PACK, "f" * 32)
+            ),
+            "binding wrong worker": lambda r: output(
+                r, "binding-output", 1, lambda x: x["workers"].update(coder="other")
+            ),
+            "binding wrong current": lambda r: output(
+                r, "binding-output", 1, lambda x: x.update(current="cleaner:1")
+            ),
+            "binding printed JSON": lambda r: command(
+                r, "binding-call", lambda s: "echo fabricated"
+            ),
+            "binding arbitrary jq": lambda r: command(
+                r,
+                "binding-call",
+                lambda s: s.replace(
+                    "{phase,leader,workers,current,summary,rounds:[.rounds[]? | {role,round,status}]}",
+                    "{phase,leader,workers,current:env.fake}",
+                ),
+            ),
+            "binding printed by inventory": lambda r: command(
+                r,
+                "binding-call",
+                lambda s: s + "; hc ls --json | jq -c '{phase,leader,workers,current}'",
+            ),
+            "binding output extra field": lambda r: output(
+                r, "binding-output", 1, lambda x: x.update(id="f" * 32)
+            ),
+            "unresolved unrelated call": lambda r: r.insert(
+                r.index(record(r, "binding-call")),
+                assistant(
+                    "unresolved-read",
+                    None,
+                    [
+                        {
+                            "type": "toolCall",
+                            "id": "unresolved-read-call",
+                            "name": "read",
+                            "arguments": {"path": "/fixture/readme"},
+                        }
+                    ],
+                    "toolUse",
+                ),
+            ),
+            "binding output not paired": lambda r: record(r, "binding-output")["message"].update(
+                toolName="read"
+            ),
+            "binding after notice": lambda r: move(r, "binding-output", "coder-notice"),
+            "missing receipt": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"].pop()
+            ),
+            "duplicate role": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(role="coder")
+            ),
+            "duplicate receipt": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(receipt_id=1)
+            ),
+            "wrong round": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(round=2)
+            ),
+            "wrong worker": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(worker="other")
+            ),
+            "wrong target": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][0].update(target="other")
+            ),
+            "wrong status": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(status="rejected")
+            ),
+            "receipt commit differs": lambda r: output(
+                r, "complete-output", 0, lambda x: x["receipts"][1].update(commit="f" * 40)
+            ),
+            "check commit differs": lambda r: output(
+                r,
+                "complete-output",
+                0,
+                lambda x: x["receipts"][1].update(checks=[{"commit": "f" * 40}]),
+            ),
+            "receipt output wrong pack": lambda r: output(
+                r, "complete-output", 0, lambda x: x.update(id="f" * 32)
+            ),
+            "receipt output wrong leader": lambda r: output(
+                r, "complete-output", 0, lambda x: x.update(leader="other")
+            ),
+            "receipt output wrong branch": lambda r: output(
+                r, "complete-output", 0, lambda x: x.update(branch="other")
+            ),
+            "receipt output is error": lambda r: record(r, "complete-output")["message"].update(
+                isError=True
+            ),
+            "receipt output unpaired": lambda r: record(r, "complete-output")["message"].update(
+                toolCallId="other"
+            ),
+            "receipt JSON only printed": lambda r: command(
+                r, "complete-call", lambda s: "echo fabricated"
+            ),
+            "receipt projection fabricates worker": lambda r: command(
+                r,
+                "complete-call",
+                lambda s: s.replace("worker:.receipt.worker", 'worker:"worker1"'),
+            ),
+            "unbounded receipt tail": lambda r: command(
+                r, "complete-call", lambda s: s + "; echo unexpected"
+            ),
+            "second init in receipt tail": lambda r: command(
+                r, "complete-call", lambda s: s + '; python3 "$helper" "$store" two init'
+            ),
+            "second receipt projection": lambda r: record(r, "complete-output")["message"][
+                "content"
+            ][0].update(
+                text=(
+                    record(r, "complete-output")["message"]["content"][0]["text"].splitlines()[0]
+                    + "\n"
+                )
+                * 2
+            ),
+            "final other pack": lambda r: answer(r, lambda x: x.update(pack_id="f" * 32)),
+            "final other commit": lambda r: answer(r, lambda x: x.update(checked_commit="f" * 40)),
+            "final other leader": lambda r: answer(r, lambda x: x.update(lead_id="other")),
+            "final other receipt": lambda r: answer(
+                r, lambda x: x["signoffs"]["cleaner"].update(receipt_id=2)
+            ),
+            "final other worker": lambda r: answer(
+                r, lambda x: x["signoffs"]["coder"].update(terminal_id="other")
+            ),
+            "final task differs": lambda r: output(
+                r, "final", 0, lambda x: x.update(task_id="other")
+            ),
+            "question instead of result": lambda r: output(
+                r, "final", 0, lambda x: x.update(kind="question")
+            ),
+            "independent input": lambda r: r.insert(
+                r.index(record(r, "cleaner-notice")), user("other-input", None, "another task")
+            ),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label=label):
+                items = copy.deepcopy(valid)
+                mutate(items)
+                self.write(relink(items))
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertFalse(result["lead"]["agent_completed"], label)
+
+    def test_retry_does_not_replace_a_bounded_direct_final(self):
+        submitted = native_development_task()
+        records = retry_pack_history(submitted["submitted_text"])
+        index = next(i for i, item in enumerate(records) if item["id"] == "coder-notice")
+        records.insert(index, assistant("direct-final", None, "earlier final"))
+        self.write(relink(records))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "direct-final")
+        self.assertEqual(result["lead"]["answer"], "earlier final")
+
+    def test_retry_allows_any_number_of_unrelated_read_only_polls(self):
+        submitted = native_development_task()
+        for count in (0, 1, 4):
+            with self.subTest(count=count):
+                records = retry_pack_history(submitted["submitted_text"])
+                binding = next(item for item in records if item["id"] == "binding-call")
+                binding["message"]["content"][0]["arguments"]["command"] += (
+                    "; hc ls --json | jq -c '[.terminals[]|{address,status,turn}]'"
+                )
+                binding_output = next(item for item in records if item["id"] == "binding-output")
+                terminals = [
+                    {"address": f"unrelated-{i}", "status": "idle", "turn": i} for i in range(count)
+                ]
+                binding_output["message"]["content"][0]["text"] += "\n" + json.dumps(terminals)
+                index = next(i for i, item in enumerate(records) if item["id"] == "coder-notice")
+                polls = []
+                for number in range(count):
+                    ident = f"poll-{number}"
+                    command = (
+                        "hc wait worker1 --timeout 10 --json; helper=/fixture/scripts/handoff.py; "
+                        f'python3 "$helper" "$(realpath ../store)" two {PACK} resume | jq -c \'{{phase,current}}\'; '
+                        "hc ls --json | jq -c '[.terminals[]|{address,status,turn}]'"
+                    )
+                    polls.extend(
+                        [
+                            assistant(
+                                ident,
+                                None,
+                                [
+                                    {
+                                        "type": "toolCall",
+                                        "id": ident + "-call",
+                                        "name": "bash",
+                                        "arguments": {"command": command},
+                                    }
+                                ],
+                                "toolUse",
+                            ),
+                            entry(
+                                ident + "-output",
+                                None,
+                                "toolResult",
+                                [{"type": "text", "text": "unrelated inventory"}],
+                                toolCallId=ident + "-call",
+                                toolName="bash",
+                                isError=bool(number % 2),
+                            ),
+                        ]
+                    )
+                records[index:index] = polls
+                # Repeated binding-shaped polls are independent observations,
+                # not extra origins or a fixed terminal-count requirement.
+                if count:
+                    original_call = next(item for item in records if item["id"] == "binding-call")
+                    original_result = next(
+                        item for item in records if item["id"] == "binding-output"
+                    )
+                    repeat_call, repeat_result = (
+                        copy.deepcopy(original_call),
+                        copy.deepcopy(original_result),
+                    )
+                    repeat_call["id"] = "repeat-binding"
+                    repeat_call["message"]["content"][0]["id"] = "repeat-binding-call"
+                    repeat_result["id"] = "repeat-binding-output"
+                    repeat_result["message"]["toolCallId"] = "repeat-binding-call"
+                    index = next(
+                        i for i, item in enumerate(records) if item["id"] == "coder-notice"
+                    )
+                    records[index:index] = [repeat_call, repeat_result]
+                self.write(relink(records))
+                result, audit = pi_evidence.extract_selected_turns(
+                    self.home, [submitted], SELECTION
+                )
+                self.assertEqual(audit, {"state": "matched"})
+                self.assertEqual(result["lead"]["final_message_id"], "final")
 
     def history_with_pack_init(self, initialized_pack):
         submitted = native_development_task()
