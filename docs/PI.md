@@ -106,11 +106,27 @@ native session ID and user-message entry ID. Pi has no Codex-style turn ID:
 `agent_turn_id` uses the actual user entry ID, and private evidence marks
 `turn_id_source=pi_user_message_id`.
 
-Only the last valid assistant text after that user message and before the next,
-with `stopReason=stop` and no pending tool call, counts as native completion.
-The hc turn must also advance and reach idle/done before a result is available.
-Questions, task results and independent verified success remain distinct;
-CLI success or terminal done is not task success.
+Normally only the last valid assistant text after that user message and before
+the next, with `stopReason=stop` and no pending tool call, counts as native
+completion. For a **native Pi development result** only, a narrowly recognized
+Herdr two-pack can continue across its Coder and Cleaner receipt notifications:
+the linear history must contain an earlier pack/worker binding and separately
+corroborate the accepted receipts using matching, non-error tool calls and
+structured results in the recognized two-pack snapshot command format. Other
+notification and snapshot formats remain uncorrelated. The final must be a
+result for the original task. An independent input, uncertain or mismatched
+receipt, question, or an existing bounded final does not qualify. The original user entry remains the turn ID;
+the actual final assistant entry remains the final message ID. Isolated Pi and
+ordinary direct turns keep their existing behavior.
+
+This checks transcript consistency, **not cryptographic sender authenticity**:
+a participant with control of native history or tool output could forge the
+observations. The bridge neither runs commands nor opens files named in the
+notifications to establish this correlation. A supported transcript shape is
+not proof the work succeeded; changed or unknown formats remain uncorrelated.
+The hc turn must also advance and reach idle/done, and native Pi must settle on
+the same final message. Questions, task results and independent verified success
+remain distinct; CLI success or terminal done is not task success.
 
 Multiple sessions, duplicate matches, branches, forks, context edits,
 compaction, unknown formats and mid-file corruption do not fall back to screen

@@ -81,6 +81,150 @@ def selected_prefix():
     ]
 
 
+PACK = "a" * 32
+
+
+def native_development_task(identifier="lead"):
+    text = (
+        f"BRIDGE_TASK_ID={identifier}\nDevelopment task work; this is one round of the SAME task. "
+        "Do not approve permission/trust dialogs, merge or deploy. "
+        "Use your normal tools, extensions and skills for this task. Goal: fixture"
+    )
+    return {**task(identifier, text), "development_task": "work"}
+
+
+def two_pack_history(submitted, task_id="lead", kind="result"):
+    """Synthetic transcript shaped like the observed two-pack tool output."""
+    workers = {"coder": "worker1", "cleaner": "worker2"}
+    binding = {
+        "id": PACK,
+        "phase": "active",
+        "leader": "lead-terminal",
+        "workers": workers,
+        "current": "coder:1",
+        "summary": "active",
+        "round_count": 1,
+    }
+    assignments = [
+        {
+            "id": f"{PACK}/{role}/1",
+            "role": role,
+            "target": worker,
+            "rejections": [],
+            "receipt": {
+                "id": receipt_id,
+                "status": status,
+                "worker": worker,
+                "result": {"input_commit": old, "commit": new},
+                "notification": {"status": "delivered"},
+            },
+        }
+        for role, worker, receipt_id, status, old, new in (
+            ("coder", "worker1", 1, "done", "b" * 40, "c" * 40),
+            ("cleaner", "worker2", 2, "pass", "c" * 40, "d" * 40),
+        )
+    ]
+    # A rejected earlier attempt is not the later accepted Cleaner receipt.
+    assignments[1]["rejections"] = [{"id": 7, "status": "pass", "worker": "worker2"}]
+    completed = {
+        "id": PACK,
+        "phase": "completed",
+        "leader": "lead-terminal",
+        "workers": workers,
+        "branch": "fixture",
+        "baseline": "b" * 40,
+        "current": None,
+        "summary": "completed",
+        "assignments": assignments,
+    }
+    tails = [
+        {"address": name, "status": "working", "turn": 0}
+        for name in ("lead-terminal", "worker1", "worker2")
+    ]
+
+    def call(identifier, phase):
+        filt = (
+            "{id,phase,leader,workers,current,summary,round_count:(.rounds|length)}"
+            if phase == "active"
+            else "{id,phase,leader,workers,branch,baseline,current,summary,"
+            "assignments:[.assignments[]|{id,role,target,rejections,receipt}]}"
+        )
+        worker = workers["coder" if phase == "active" else "cleaner"]
+        command = (
+            ("set -o pipefail; " if phase == "active" else "")
+            + f"hc wait {worker} --timeout 20 --json; "
+            + f"python3 /fixture/scripts/handoff.py /fixture/store two {PACK} resume | jq '{filt}'; "
+            + "hc ls --json | jq -c '.terminals[] | {address,status,turn}'"
+        )
+        return assistant(
+            identifier,
+            None,
+            [
+                {
+                    "type": "toolCall",
+                    "id": identifier + "-call",
+                    "name": "bash",
+                    "arguments": {"command": command, "timeout": 26},
+                }
+            ],
+            "toolUse",
+        )
+
+    def output(identifier, call_id, phase):
+        worker = workers["coder" if phase == "active" else "cleaner"]
+        wait = {
+            "children": [],
+            "ended": False,
+            "exit_code": None,
+            "reason": "timeout",
+            "signal": None,
+            "status": "working",
+            "terminal": worker,
+            "turn": 0,
+        }
+        content = "\n".join(
+            json.dumps(obj) for obj in [wait, binding if phase == "active" else completed, *tails]
+        )
+        return entry(
+            identifier,
+            None,
+            "toolResult",
+            [{"type": "text", "text": content}],
+            toolCallId=call_id + "-call",
+            toolName="bash",
+            isError=False,
+        )
+
+    def notice(identifier, role, worker, status, decision):
+        return user(
+            identifier,
+            None,
+            f'<hc from="{worker} fixture-{role}">Herdr two-pack receipt saved for {PACK}/{role}/1 ({status}). Decision: {decision}. Inspect with python3 /ignored/tool.py /ignored/store two {PACK} resume.</hc>',
+        )
+
+    records = selected_prefix() + [
+        user("original", None, submitted),
+        call("binding-call", "active"),
+        output("binding-output", "binding-call", "active"),
+        notice("coder-notice", "coder", "worker1", "done", "active"),
+        call("complete-call", "completed"),
+        output("complete-output", "complete-call", "completed"),
+        notice("cleaner-notice", "cleaner", "worker2", "pass", "completed"),
+        assistant(
+            "final",
+            None,
+            json.dumps({"task_id": task_id, "kind": kind, "answer": {"summary": "done"}}),
+        ),
+    ]
+    return relink(records)
+
+
+def relink(records):
+    for index, record in enumerate(records[1:], 1):
+        record["parentId"] = records[index - 1]["id"] if index > 1 else None
+    return records
+
+
 class PiEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="hab-pi-evidence-test-")
@@ -100,6 +244,229 @@ class PiEvidenceTests(unittest.TestCase):
     def evidence(self, entries, tasks, tail=b""):
         self.write(entries, tail)
         return pi_evidence.extract_turns(self.home, tasks)
+
+    def test_native_development_correlates_independently_corroborated_two_pack(self):
+        submitted = native_development_task()
+        entries = two_pack_history(submitted["submitted_text"])
+        self.write(entries)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["agent_turn_id"], "original")
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+        self.assertEqual(json.loads(result["lead"]["answer"])["kind"], "result")
+        self.assertFalse(
+            pi_evidence.extract_turns(self.home, [submitted])["lead"]["agent_completed"]
+        )
+        # The acceptance snapshot can also be observed after both notifications.
+        after_both = entries[:7] + [entries[9]] + entries[7:9] + entries[10:]
+        self.write(relink(after_both))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+
+    def test_two_pack_does_not_cross_an_independent_bridge_input(self):
+        submitted = native_development_task()
+        entries = two_pack_history(submitted["submitted_text"])
+        index = next(i for i, e in enumerate(entries) if e["id"] == "cleaner-notice")
+        entries[index:index] = [
+            user("independent", None, "independent task"),
+            assistant("independent-answer", None, "independent answer"),
+        ]
+        self.write(relink(entries))
+        other = task("other", "independent task")
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted, other], SELECTION)
+        self.assertFalse(result["lead"]["agent_completed"])
+        self.assertEqual(result["other"]["final_message_id"], "independent-answer")
+        self.assertEqual(result["other"]["answer"], "independent answer")
+        self.assertEqual(audit["state"], "pending")
+
+    def test_two_pack_requires_native_development_and_unbounded_complete_history(self):
+        submitted = native_development_task()
+        entries = two_pack_history(submitted["submitted_text"])
+        for label, tasks, records, tail in (
+            ("ordinary task", [task("lead", submitted["submitted_text"])], entries, b""),
+            (
+                "isolated task",
+                [
+                    {
+                        **submitted,
+                        "submitted_text": submitted["submitted_text"].replace(
+                            "Use your normal tools, extensions and skills for this task.",
+                            "Use scoped_edit/scoped_write and run_check for changes and checks.",
+                        ),
+                    }
+                ],
+                two_pack_history(
+                    submitted["submitted_text"].replace(
+                        "Use your normal tools, extensions and skills for this task.",
+                        "Use scoped_edit/scoped_write and run_check for changes and checks.",
+                    )
+                ),
+                b"",
+            ),
+            ("partial final", [submitted], entries, b'{"type":'),
+            (
+                "aborted original",
+                [submitted],
+                relink(
+                    copy.deepcopy(entries[:6])
+                    + [assistant("abort", None, [], stop="aborted")]
+                    + copy.deepcopy(entries[6:])
+                ),
+                b"",
+            ),
+        ):
+            with self.subTest(label=label):
+                self.write(records, tail)
+                result, _ = pi_evidence.extract_selected_turns(self.home, tasks, SELECTION)
+                self.assertFalse(result["lead"]["agent_completed"])
+
+    def test_two_pack_does_not_override_restored_lost_turn(self):
+        submitted = {
+            **native_development_task(),
+            "recovery": {"state": "restored", "thread_id": THREAD, "agent_turn_id": "original"},
+        }
+        self.write(two_pack_history(submitted["submitted_text"]))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertTrue(result["lead"]["agent_lost"])
+        self.assertFalse(result["lead"]["agent_completed"])
+
+    def test_two_pack_does_not_swallow_a_registered_notification_shaped_input(self):
+        submitted = native_development_task()
+        entries = two_pack_history(submitted["submitted_text"])
+        notice = next(e for e in entries if e["id"] == "coder-notice")["message"]["content"]
+        self.write(entries)
+        result, _ = pi_evidence.extract_selected_turns(
+            self.home, [submitted, task("independent", notice)], SELECTION
+        )
+        self.assertFalse(result["lead"]["agent_completed"])
+        self.assertEqual(result["independent"]["agent_turn_id"], "coder-notice")
+
+    def test_two_pack_rejects_unsupported_or_uncorroborated_inputs(self):
+        submitted = native_development_task()
+        original = two_pack_history(submitted["submitted_text"])
+
+        def by_id(records, ident):
+            return next(e for e in records if e["id"] == ident)
+
+        def mutate_content(records, ident, mutate):
+            message = by_id(records, ident)["message"]
+            objs = []
+            decoder = json.JSONDecoder()
+            data = message["content"][0]["text"]
+            while data.strip():
+                value, end = decoder.raw_decode(data.lstrip())
+                objs.append(value)
+                data = data.lstrip()[end:]
+            mutate(objs)
+            message["content"][0]["text"] = "\n".join(map(json.dumps, objs))
+
+        cases = {
+            "question": lambda r: by_id(r, "final")["message"]["content"][0].update(
+                text=json.dumps({"task_id": "lead", "kind": "question", "answer": {}})
+            ),
+            "earlier question": lambda r: r.insert(
+                7,
+                assistant(
+                    "question",
+                    None,
+                    json.dumps({"task_id": "lead", "kind": "question", "answer": {}}),
+                ),
+            ),
+            "wrong task": lambda r: by_id(r, "final")["message"]["content"][0].update(
+                text=json.dumps({"task_id": "other", "kind": "result", "answer": {}})
+            ),
+            "unknown notice": lambda r: by_id(r, "coder-notice")["message"].update(
+                content='<hc from="worker1">unrelated</hc>'
+            ),
+            "mixed pack": lambda r: by_id(r, "cleaner-notice")["message"].update(
+                content=by_id(r, "cleaner-notice")["message"]["content"].replace(PACK, "f" * 32)
+            ),
+            "fake shell output": lambda r: by_id(r, "binding-call")["message"]["content"][0][
+                "arguments"
+            ].update(command="printf arbitrary"),
+            "fake script": lambda r: by_id(r, "binding-call")["message"]["content"][0][
+                "arguments"
+            ].update(
+                command=by_id(r, "binding-call")["message"]["content"][0]["arguments"][
+                    "command"
+                ].replace("/fixture/scripts/handoff.py", "/fixture/scripts/other.py")
+            ),
+            "non-tooluse call": lambda r: by_id(r, "complete-call")["message"].update(
+                stopReason="stop"
+            ),
+            "different store": lambda r: by_id(r, "complete-call")["message"]["content"][0][
+                "arguments"
+            ].update(
+                command=by_id(r, "complete-call")["message"]["content"][0]["arguments"][
+                    "command"
+                ].replace("/fixture/store", "/other/store")
+            ),
+            "unmatched tool call": lambda r: by_id(r, "complete-output")["message"].update(
+                toolCallId="unrelated"
+            ),
+            "wrong tool": lambda r: by_id(r, "complete-output")["message"].update(toolName="read"),
+            "error tool": lambda r: by_id(r, "complete-output")["message"].update(isError=True),
+            "arbitrary output prefix": lambda r: by_id(r, "complete-output")["message"]["content"][
+                0
+            ].update(
+                text="garbage\n" + by_id(r, "complete-output")["message"]["content"][0]["text"]
+            ),
+            "unaccepted receipt": lambda r: mutate_content(
+                r, "complete-output", lambda o: o[1]["assignments"][1].update(receipt=None)
+            ),
+            "wrong receipt worker": lambda r: mutate_content(
+                r,
+                "complete-output",
+                lambda o: o[1]["assignments"][0]["receipt"].update(worker="other"),
+            ),
+            "duplicate assignment": lambda r: mutate_content(
+                r,
+                "complete-output",
+                lambda o: o[1]["assignments"].append(copy.deepcopy(o[1]["assignments"][0])),
+            ),
+            "conflicting baseline": lambda r: mutate_content(
+                r, "complete-output", lambda o: o[1].update(baseline="f" * 40)
+            ),
+            "rejected only": lambda r: mutate_content(
+                r,
+                "complete-output",
+                lambda o: o[1]["assignments"][1].update(
+                    receipt=None, rejections=[{"id": 2, "status": "pass", "worker": "worker2"}]
+                ),
+            ),
+            "duplicate receipt": lambda r: mutate_content(
+                r, "complete-output", lambda o: o[1]["assignments"][1]["receipt"].update(id=1)
+            ),
+            "rejected receipt id reused": lambda r: mutate_content(
+                r, "complete-output", lambda o: o[1]["assignments"][1]["rejections"][0].update(id=1)
+            ),
+            "unbound pack": lambda r: mutate_content(
+                r, "binding-output", lambda o: o[1].update(id="f" * 32)
+            ),
+            "duplicate notice": lambda r: r.insert(
+                -1, {**copy.deepcopy(by_id(r, "cleaner-notice")), "id": "duplicate-notice"}
+            ),
+            "binding after notice": lambda r: r.insert(7, r.pop(5)),
+        }
+        for label, mutate in cases.items():
+            with self.subTest(label=label):
+                entries = copy.deepcopy(original)
+                mutate(entries)
+                self.write(relink(entries))
+                result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+                self.assertFalse(result["lead"]["agent_completed"], label)
+
+    def test_two_pack_never_replaces_a_bounded_direct_final(self):
+        submitted = native_development_task()
+        entries = two_pack_history(submitted["submitted_text"])
+        entries.insert(6, assistant("bounded", None, "earlier final"))
+        self.write(relink(entries))
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "bounded")
+        self.assertEqual(result["lead"]["answer"], "earlier final")
 
     def test_aborted_turn_is_correlated_and_settled_without_a_successful_answer(self):
         self.write(
