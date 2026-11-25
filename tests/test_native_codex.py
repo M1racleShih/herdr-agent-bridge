@@ -322,7 +322,13 @@ class NativeCodexTests(unittest.TestCase):
             ],
         }
         bridge = self.bridge(development=spec)
-        first = bridge.submit("one", "Fix value", development_task=spec["task_id"])
+        prompt = "Delegate the fix to a subagent and commit the result."
+        first = bridge.submit("one", prompt, development_task=spec["task_id"])
+        instructions, body = self.hc.calls[-1][0][-1].split("\n\n", 1)
+        self.assertEqual(body, prompt)
+        self.assertNotIn("start agents", instructions)
+        self.assertNotIn("commit", instructions)
+        self.assertIn("Do not approve permission/trust dialogs, merge or deploy.", instructions)
         bound = self.turn(THREAD, first)
         self.settle()
         self.assertEqual(bridge.observe("one")["observed"], "evidence_ready")

@@ -8,7 +8,7 @@ Sign in to GitHub and use [private vulnerability reporting](https://github.com/M
 
 Include the affected bridge version and commit if known, operating system, hc and relevant agent versions, prerequisites, a minimal reproduction with synthetic data, expected and observed behavior, and the likely impact. Identify any uncertainty. Do not send real tokens, raw conversations, private source files or full runtime journals. A maintainer can coordinate further disclosure and a fix through the private report; there is no promised response time or disclosure schedule.
 
-Reports for the current 0.1.0 release are in scope. Third-party vulnerabilities should also be reported to the relevant upstream project using its own security process.
+Reports for the current 0.1.1 release are in scope. Third-party vulnerabilities should also be reported to the relevant upstream project using its own security process.
 
 ## Operating boundaries
 

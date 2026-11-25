@@ -10,9 +10,9 @@ For Pi development, also install [Node.js](https://nodejs.org/en/download) and [
 
 Copy this instruction to an agent with access to your machine:
 
-> Install herdr-agent-bridge 0.1.0 by following https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.md. Check existing installations first and run the no-model smoke. Ask before logging in, incurring model costs, changing global settings or skills, or using an existing session. Do not start a model task without my authorization.
+> Install herdr-agent-bridge 0.1.1 by following https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.md. Check existing installations first and run the no-model smoke. Ask before logging in, incurring model costs, changing global settings or skills, or using an existing session. Do not start a model task without my authorization.
 
-The commands below install version 0.1.0. Installing the bundled agent skill is optional.
+The commands below install version 0.1.1. Installing the bundled agent skill is optional.
 
 ## Check the environment
 
@@ -34,18 +34,18 @@ hc --version
 
 If `herdr-bridge` already exists, check `herdr-bridge --version` and its location. Reconcile active runs before replacing an installation: their background observers use the original Python environment until cleanup. Avoid overwriting a different installation without deciding how to preserve it.
 
-## Install version 0.1.0
+## Install version 0.1.1
 
-Use uv to install version 0.1.0 from [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.0/).
+Use uv to install version 0.1.1 from [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.1/).
 
 ```sh
-uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'
+uv tool install --python 3.11 'herdr-agent-bridge==0.1.1'
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help
 ```
 
-The version command should print `herdr-bridge 0.1.0`. If the executable is not found, add the directory printed by `uv tool dir --bin` to your current `PATH`, then retry; `uv tool update-shell` changes shell configuration and should be used only when authorized. Alternatively, install a verified 0.1.0 wheel with `uv tool install --python 3.11 /path/to/herdr_agent_bridge-0.1.0-py3-none-any.whl`.
+The version command should print `herdr-bridge 0.1.1`. If the executable is not found, add the directory printed by `uv tool dir --bin` to your current `PATH`, then retry; `uv tool update-shell` changes shell configuration and should be used only when authorized. Alternatively, install a verified 0.1.1 wheel with `uv tool install --python 3.11 /path/to/herdr_agent_bridge-0.1.1-py3-none-any.whl`.
 
 ## First success without a model
 

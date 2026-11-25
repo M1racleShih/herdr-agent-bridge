@@ -2,6 +2,10 @@
 
 English · [简体中文](CHANGELOG.zh-CN.md)
 
+## 0.1.1
+
+Development prompts now leave subagent use and Git commits to the task instructions, project rules and available tools. The bridge continues to track the main session and verify changes against the starting worktree.
+
 ## 0.1.0
 
 The first public release connects Hermes Desktop or Grok Bot to a local Pi or Codex session through herdr-core. A request can continue across turns and return verified changes to its original conversation.

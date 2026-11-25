@@ -705,8 +705,8 @@ class Bridge:
                 contract = dev.contract
                 wrapped = (
                     f"BRIDGE_TASK_ID={task_id}\nDevelopment task {development_task}; "
-                    "this is one round of the SAME task. Do not start agents, approve "
-                    "permission/trust dialogs, commit, merge or deploy. "
+                    "this is one round of the SAME task. Do not approve permission/trust "
+                    "dialogs, merge or deploy. "
                     + (
                         "Use your normal tools, extensions and skills for this task. "
                         if self.data.get("runtime") == "native"

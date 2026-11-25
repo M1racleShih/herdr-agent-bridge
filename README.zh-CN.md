@@ -38,7 +38,7 @@ herdr-bridge --version
 herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 ```
 
-预期看到 `herdr-bridge 0.1.0`，以及包含 `"passed": true` 的 JSON。这个示例向本机小程序提交任务、追加一轮，确认阻塞状态下会拒绝输入，并清理自己的终端。无需 Bot、模型或 API 密钥。每次运行都把报告写入一个新的临时目录，并输出路径。
+预期看到 `herdr-bridge 0.1.1`，以及包含 `"passed": true` 的 JSON。这个示例向本机小程序提交任务、追加一轮，确认阻塞状态下会拒绝输入，并清理自己的终端。无需 Bot、模型或 API 密钥。每次运行都把报告写入一个新的临时目录，并输出路径。
 
 **也可以把这句话发给你的 Agent：**“按 [安装指南](https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.zh-CN.md) 用 uv 安装 CLI，运行本地 smoke。先给我看版本和检查结果，再接 Bot 或调用模型。”
 
@@ -51,7 +51,7 @@ herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 原则上，只要一个 Agent 能调用项目入口，另一个 Agent 的会话有对应适配器，两者就可以通过 bridge 协作。这个项目首先解决的是软件开发场景。**Personal Agent** 通过获授权的项目入口管理任务，**编码 Agent** 在自己的原生会话里执行。接入新的管理端，需要让它调用项目入口，并能接收执行结果。接入新的执行端，需要适配它的启动方式、输入目标和原生回复，确保每次操作都落在正确的会话里。
 
 - **已实测的 Personal Agent** 有 Hermes Agent（Desktop Bot Chat）和 Grok Bot。两者都分别向下表中的两个编码 Agent 派过单，并在原对话收到经核验的结果。
-- **0.1.0 当前支持的编码 Agent** 有 Pi 和 Codex CLI。下表列出各适配器支持的运行模式，以及 Personal Agent 可通过 bridge 发送的原生命令。
+- **0.1.1 当前支持的编码 Agent** 有 Pi 和 Codex CLI。下表列出各适配器支持的运行模式，以及 Personal Agent 可通过 bridge 发送的原生命令。
 
 | 运行模式 | Pi | Codex CLI |
 | --- | --- | --- |

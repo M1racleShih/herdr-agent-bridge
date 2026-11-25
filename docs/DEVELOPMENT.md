@@ -17,6 +17,10 @@ definitions. A project allows one unfinished development run, and a new run
 also requires the prior one cleaned up. An entry without a contract remains
 read-only.
 
+In native development rounds, the task instructions, project rules and available
+tools govern subagent use and Git commits. The bridge tracks the main session
+and verifies changes against the task's worktree baseline.
+
 At the fixed project entry submit a round with
 `submit <round-id> --prompt-file <file>` and use
 `--parent <latest-round-id>` for later rounds. The lower-level

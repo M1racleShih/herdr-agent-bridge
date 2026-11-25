@@ -36,7 +36,7 @@ class InstalledCliTests(unittest.TestCase):
     def test_version_help_and_parameter_exit_codes(self):
         version = self.invoke("--version")
         self.assertEqual((version.returncode, version.stderr), (0, ""))
-        self.assertEqual(version.stdout.strip(), "herdr-bridge 0.1.0")
+        self.assertEqual(version.stdout.strip(), "herdr-bridge 0.1.1")
         for args in [
             ("--help",),
             ("manager", "--help"),

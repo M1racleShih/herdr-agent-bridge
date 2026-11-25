@@ -10,9 +10,9 @@ Bridge 的**必需运行时**是 [herdr-core](https://github.com/herdrdev/herdr-
 
 可以把以下指令交给能够访问本机的 Agent：
 
-> 请按照 https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.zh-CN.md 安装 herdr-agent-bridge 0.1.0。先检查已有安装，再运行无模型 smoke。登录、产生模型费用、更改全局配置或 skills、使用已有会话之前请先征得我的授权；未经授权不要启动模型任务。
+> 请按照 https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.zh-CN.md 安装 herdr-agent-bridge 0.1.1。先检查已有安装，再运行无模型 smoke。登录、产生模型费用、更改全局配置或 skills、使用已有会话之前请先征得我的授权；未经授权不要启动模型任务。
 
-以下命令安装 0.1.0。随包提供的 Agent skill 可以按需安装。
+以下命令安装 0.1.1。随包提供的 Agent skill 可以按需安装。
 
 ## 检查环境
 
@@ -34,18 +34,18 @@ hc --version
 
 如果已有 `herdr-bridge`，检查其路径和 `herdr-bridge --version`。替换安装前先核对活动 run：后台观察器在清理前仍使用原来的 Python 环境。决定如何保留其他安装后再覆盖。
 
-## 安装 0.1.0
+## 安装 0.1.1
 
-使用 uv 从 [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.0/) 安装固定版本。
+使用 uv 从 [PyPI](https://pypi.org/project/herdr-agent-bridge/0.1.1/) 安装固定版本。
 
 ```sh
-uv tool install --python 3.11 'herdr-agent-bridge==0.1.0'
+uv tool install --python 3.11 'herdr-agent-bridge==0.1.1'
 export PATH="$(uv tool dir --bin):$PATH"
 herdr-bridge --version
 herdr-bridge --help
 ```
 
-版本命令应输出 `herdr-bridge 0.1.0`。若找不到命令，将 `uv tool dir --bin` 输出的目录加入当前 `PATH` 后重试；`uv tool update-shell` 会修改 shell 配置，仅在获得授权后使用。也可以安装已核验的 0.1.0 wheel：`uv tool install --python 3.11 /path/to/herdr_agent_bridge-0.1.0-py3-none-any.whl`。
+版本命令应输出 `herdr-bridge 0.1.1`。若找不到命令，将 `uv tool dir --bin` 输出的目录加入当前 `PATH` 后重试；`uv tool update-shell` 会修改 shell 配置，仅在获得授权后使用。也可以安装已核验的 0.1.1 wheel：`uv tool install --python 3.11 /path/to/herdr_agent_bridge-0.1.1-py3-none-any.whl`。
 
 ## 不调用模型的首次成功
 

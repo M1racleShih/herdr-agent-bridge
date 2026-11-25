@@ -2,6 +2,10 @@
 
 [English](CHANGELOG.md) · 简体中文
 
+## 0.1.1
+
+开发轮次是否使用子 Agent 或创建 Git 提交，现由任务指令、项目规则和可用工具决定。Bridge 继续跟踪主会话，并对照任务开始时的工作区核验改动。
+
 ## 0.1.0
 
 首个公开版本通过 herdr-core 把 Hermes Desktop 或 Grok Bot 对话接入本机的 Pi 或 Codex。一个请求可以连续执行多轮，并把经过核验的改动带回原对话。

@@ -38,7 +38,7 @@ herdr-bridge --version
 herdr-bridge tool smoke_hc --output "$(mktemp -d)/results.json"
 ```
 
-Expect `herdr-bridge 0.1.0` and a JSON result with `"passed": true`. The smoke sends a task and a follow-up to a small local program, checks that blocked input is refused and cleans up its own terminal. It requires no bot, model or API key. Each invocation writes its report to a new temporary directory and prints the path.
+Expect `herdr-bridge 0.1.1` and a JSON result with `"passed": true`. The smoke sends a task and a follow-up to a small local program, checks that blocked input is refused and cleans up its own terminal. It requires no bot, model or API key. Each invocation writes its report to a new temporary directory and prints the path.
 
 **Give this to your agent:** “Follow the [installation guide](https://github.com/M1racleShih/herdr-agent-bridge/blob/main/docs/INSTALL.md). Install the CLI with uv and run the local smoke. Show me the version and checks before connecting a bot or using a model.”
 
@@ -51,7 +51,7 @@ For a first coding task, select an authenticated Pi or Codex CLI and a disposabl
 In principle, any agent that can call the project entry can direct another agent with a compatible session adapter. The first application is software development. A **personal agent** manages the task through an authorized project entry. A **coding agent** does the work in its native session. Extending the caller side means connecting another personal agent to the project entry and arranging how results get back to it. Extending the execution side means adding an adapter that can launch an agent, direct input to the right session and recognize its replies.
 
 - **Tested personal agents.** Hermes Agent (Desktop Bot Chat) and Grok Bot have each dispatched work to both supported coding agents and received verified results in the original chat.
-- **Supported coding agents in 0.1.0.** Pi and Codex CLI. The table lists the execution modes and native commands exposed by their adapters.
+- **Supported coding agents in 0.1.1.** Pi and Codex CLI. The table lists the execution modes and native commands exposed by their adapters.
 
 | Execution mode | Pi | Codex CLI |
 | --- | --- | --- |

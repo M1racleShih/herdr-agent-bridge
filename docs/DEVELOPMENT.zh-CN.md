@@ -13,6 +13,9 @@
 `argv` 和 `timeout` 定义。每个项目只允许一个未结束的开发 run；新 run 还要求前一个
 已清理。无 contract 的入口保持只读。
 
+在原生开发轮次中，是否使用子 Agent 或创建 Git 提交，取决于任务指令、项目规则和可用工具。
+Bridge 跟踪主会话，并对照任务开始时的工作区基线核验改动。
+
 固定项目入口用 `submit <round-id> --prompt-file <file>` 提交一轮，后续轮次用
 `--parent <latest-round-id>` 关联。底层 `herdr-bridge manager` 接收包含完整检查定义
 的契约，提交时使用 `submit <round-id> --development-task <task-id> --prompt-file <file>`；
