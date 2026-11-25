@@ -428,6 +428,16 @@ model, reasoning and session ID. `model_selection.requested` is the request;
 native selection failed. Subsequent rounds use evidence from the bound
 session. `execution_policy` records requested, resolved and source values.
 
+Native Codex correlates the original submitted text exactly against user items
+in the bound thread. It also accepts the narrowly observed case where the saved
+text has one terminal LF and the native item is otherwise identical without
+that LF. This fallback does not apply to a terminal CRLF, multiple terminal
+LFs, an empty result or whitespace-only input; no other whitespace is removed
+or normalized. The original submitted text and hash remain unchanged. Exact
+and fallback candidates are considered together: competing tasks, turns or
+distinct user items fail closed rather than assigning one answer twice. Native
+selection, final-answer phase and ordered completion are still required.
+
 Pi requires the native assistant message's provider/model to match the startup
 selection. A virtual model routed to a different actual provider/model returns
 `native_dispatch_mismatch` and is not supported.

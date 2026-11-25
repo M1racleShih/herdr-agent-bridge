@@ -120,23 +120,38 @@ def extract_path(path, tasks, *, thread_id=None, project=None, lost=False):
     if not thread:
         return {}, {"state": "pending", "reason": "codex_rollout_pending"}
     matches = {}
+    claimed_turns = set()
     for task in tasks:
         sent = task["submitted_text"]
+        bodies = {sent}
+        # Codex can record the submitted body without its one terminal LF.
+        # Do not broaden this to CRLF, multiple LFs, or whitespace-only input.
+        if sent.endswith("\n") and not sent.endswith(("\r\n", "\n\n")) and sent[:-1].strip():
+            bodies.add(sent[:-1])
         candidates = [
-            (turn, [entry for entry in entries if entry[1] == sent])
+            (turn, [entry for entry in entries if entry[1] in bodies])
             for turn, entries in users.items()
-            if any(entry[1] == sent for entry in entries)
+            if any(entry[1] in bodies for entry in entries)
         ]
         if len(candidates) > 1:
             return {}, {"state": "failed", "reason": "codex_turn_ambiguous"}
         if not candidates:
             continue
         turn, entries = candidates[0]
-        # Typed events supersede their older response-item representation. Distinct
-        # typed items remain distinct, even if the user entered identical text.
-        entries = [entry for entry in entries if entry[2] is not None] or entries
-        if len(entries) != 1 or len(completion[turn]) > 1 or len(aborted[turn]) > 1:
+        # Typed events supersede older response items only for the same body.
+        # Distinct typed items and exact/fallback bodies remain ambiguous.
+        typed_bodies = {entry[1] for entry in entries if entry[2] is not None}
+        entries = [
+            entry for entry in entries if entry[2] is not None or entry[1] not in typed_bodies
+        ]
+        if (
+            turn in claimed_turns
+            or len(entries) != 1
+            or len(completion[turn]) > 1
+            or len(aborted[turn]) > 1
+        ):
             return {}, {"state": "failed", "reason": "codex_turn_ambiguous"}
+        claimed_turns.add(turn)
         user_at, _, _ = entries[0]
         expected = task.get("codex_selection")
         actual = context.get(turn)
