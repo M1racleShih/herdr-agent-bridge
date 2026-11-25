@@ -264,6 +264,137 @@ class PiEvidenceTests(unittest.TestCase):
         self.assertEqual(audit, {"state": "matched"})
         self.assertEqual(result["lead"]["final_message_id"], "final")
 
+    def history_with_pack_init(self, initialized_pack):
+        submitted = native_development_task()
+        records = two_pack_history(submitted["submitted_text"])
+        origin = {
+            "id": initialized_pack,
+            "run": initialized_pack,
+            "directory": "/fixture/store",
+            "database": "/fixture/store/two-pack.sqlite3",
+            "phase": "ready",
+            "branch": "fixture",
+            "baseline": "b" * 40,
+            "card_version": 1,
+        }
+        index = next(i for i, record in enumerate(records) if record["id"] == "original") + 1
+        records[index:index] = [
+            assistant(
+                "init",
+                None,
+                [
+                    {
+                        "type": "toolCall",
+                        "id": "init-call",
+                        "name": "bash",
+                        "arguments": {
+                            "command": (
+                                "python3 /fixture/scripts/handoff.py /fixture/store two init "
+                                "--project /fixture/project --card /fixture/card --checks /fixture/checks "
+                                "--coder worker1 --cleaner worker2"
+                            ),
+                            "timeout": 20,
+                        },
+                    }
+                ],
+                "toolUse",
+            ),
+            entry(
+                "init-result",
+                None,
+                "toolResult",
+                [{"type": "text", "text": json.dumps(origin)}],
+                toolCallId="init-call",
+                toolName="bash",
+                isError=False,
+            ),
+        ]
+        return submitted, relink(records)
+
+    def test_two_pack_rejects_receipts_for_another_run_than_the_one_initialized(self):
+        # Same store, branch, baseline and workers. Only the run differs.
+        submitted, records = self.history_with_pack_init("e" * 32)
+        self.write(records)
+        result, _ = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertFalse(
+            result["lead"]["agent_completed"], "an inspected run is not the initialized run"
+        )
+
+    def test_two_pack_extra_visible_terminal_does_not_change_the_workers(self):
+        submitted, records = self.history_with_pack_init(PACK)
+        for record in records:
+            if record["id"] in ("binding-output", "complete-output"):
+                record["message"]["content"][0]["text"] += (
+                    '\n{"address":"unrelated","turn":1,"status":"idle"}'
+                )
+        self.write(records)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+
+    def test_two_pack_accepts_plain_resume_structured_result(self):
+        submitted, records = self.history_with_pack_init(PACK)
+        by_id = {record["id"]: record for record in records}
+        card = {
+            "version": 1,
+            "body": "Change the fixture value",
+            "checks": {"coder": [], "cleaner": []},
+            "created_at": STAMP,
+            "approval": "initial task card supplied at init",
+            "approved_at": STAMP,
+        }
+        for phase in ("binding", "complete"):
+            call = by_id[f"{phase}-call"]["message"]["content"][0]
+            call["arguments"]["command"] = (
+                f"python3 /fixture/scripts/handoff.py /fixture/store two {PACK} resume"
+            )
+            output = by_id[f"{phase}-output"]["message"]["content"][0]
+            snapshot = json.loads(output["text"].splitlines()[1])
+            completed = phase == "complete"
+            projected = snapshot.pop(
+                "assignments",
+                [{"id": f"{PACK}/coder/1", "role": "coder", "target": "worker1", "rejections": []}],
+            )
+            assignments = {}
+            for item in projected:
+                role = item["role"]
+                assignments[f"{role}:1"] = {
+                    **item,
+                    "round": 1,
+                    "created_at": STAMP,
+                    "card_version": 1,
+                    "source_receipt": None if role == "coder" else 1,
+                    "input_commit": ("b" if role == "coder" else "c") * 40,
+                    "attempts": [],
+                    "delivery": {"status": "delivered"},
+                }
+            snapshot.pop("round_count", None)
+            output["text"] = json.dumps(
+                {
+                    **snapshot,
+                    "version": 1,
+                    "pack": "two",
+                    "pack_version": 1,
+                    "project": "/fixture/project",
+                    "project_id": "fixture-project",
+                    "rounds": 1,
+                    "branch": "fixture",
+                    "baseline": "b" * 40,
+                    "assignments": assignments,
+                    "phase": "completed" if completed else "active",
+                    "card_version": 1,
+                    "card_versions": [card],
+                    "card": card,
+                    "checks": card["checks"],
+                    "created_at": STAMP,
+                    "updated_at": STAMP,
+                }
+            )
+        self.write(records)
+        result, audit = pi_evidence.extract_selected_turns(self.home, [submitted], SELECTION)
+        self.assertEqual(audit, {"state": "matched"})
+        self.assertEqual(result["lead"]["final_message_id"], "final")
+
     def test_two_pack_does_not_cross_an_independent_bridge_input(self):
         submitted = native_development_task()
         entries = two_pack_history(submitted["submitted_text"])
