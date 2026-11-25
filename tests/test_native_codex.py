@@ -1,5 +1,6 @@
 """Native Codex binding contracts with two disposable rollouts and fake hc."""
 
+import hashlib
 import json
 import os
 import shlex
@@ -13,6 +14,7 @@ from unittest.mock import patch
 from test_pi_bridge import FakeHC
 
 from herdr_agent_bridge.agent_bridge import Bridge, BridgeError
+from herdr_agent_bridge.codex_evidence import extract_path
 from herdr_agent_bridge.codex_native import STATUS_LINE
 from herdr_agent_bridge.development import collect
 
@@ -89,7 +91,7 @@ class NativeCodexTests(unittest.TestCase):
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps({"type": kind, "payload": payload}) + "\n")
 
-    def turn(self, thread, task, *, turn_id=None, done=True):
+    def turn(self, thread, task, *, turn_id=None, done=True, user_text=None):
         turn_id = turn_id or "native-" + task["id"]
         entries = [
             (
@@ -110,7 +112,12 @@ class NativeCodexTests(unittest.TestCase):
                     "item": {
                         "type": "UserMessage",
                         "id": "user-" + turn_id,
-                        "content": [{"type": "text", "text": task["submitted_text"]}],
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": task["submitted_text"] if user_text is None else user_text,
+                            }
+                        ],
                     },
                 },
             ),
@@ -219,6 +226,38 @@ class NativeCodexTests(unittest.TestCase):
             self.assertEqual(observed["evidence"]["agent_turn_id"], "native-" + task["id"])
         self.assertEqual(self.hc.count("send"), 2)
         self.assertEqual(other.read_bytes(), original)
+
+    def test_terminal_lf_prompt_reaches_evidence_ready_without_changing_identity(self):
+        bridge = self.bridge()
+        task = bridge.submit("one", "Preserve the original prompt.\n")
+        sent = task["submitted_text"]
+        self.assertTrue(sent.endswith("\n"))
+        self.assertEqual(task["input_sha256"], hashlib.sha256(sent.encode()).hexdigest())
+        path = self.turn(THREAD, task, user_text=sent[:-1])
+        journal = bridge.root / "journal.json"
+        journal_before = journal.read_bytes()
+        rollout_before = path.read_bytes()
+
+        matches, status = extract_path(path, [task], thread_id=THREAD, project=str(self.project))
+        self.assertEqual(status, {"state": "matched"})
+        self.assertEqual(matches["one"]["agent_turn_id"], "native-one")
+        self.assertEqual(matches["one"]["final_message_id"], "assistant-native-one")
+        self.assertTrue(matches["one"]["agent_completed"])
+        self.assertEqual(journal.read_bytes(), journal_before)
+        self.assertEqual(path.read_bytes(), rollout_before)
+        self.assertEqual(task["submitted_text"], sent)
+        self.assertEqual(task["input_sha256"], hashlib.sha256(sent.encode()).hexdigest())
+
+        self.settle()
+        observed = bridge.observe("one")
+        self.assertEqual(observed["observed"], "evidence_ready")
+        self.assertEqual(observed["evidence"]["thread_id"], THREAD)
+        self.assertEqual(observed["evidence"]["agent_turn_id"], "native-one")
+        self.assertEqual(observed["evidence"]["final_message_id"], "assistant-native-one")
+        saved = Bridge(bridge.root).data["tasks"][0]
+        self.assertEqual(saved["submitted_text"], sent)
+        self.assertEqual(saved["input_sha256"], task["input_sha256"])
+        self.assertEqual(path.read_bytes(), rollout_before)
 
     def test_fast_result_requires_executed_native_tier_evidence(self):
         bridge = self.bridge()
@@ -357,6 +396,315 @@ class NativeCodexTests(unittest.TestCase):
         current = bridge.reconciliation()["fingerprint"]
         self.assertEqual(
             bridge.resume(current, "I checked the changed rollout")["control"], "automation"
+        )
+
+
+class NativeCodexEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        self.path = Path(scratch.name) / "rollout.jsonl"
+        self.meta = ("session_meta", {"id": THREAD, "cwd": "/fixture-project"})
+
+    @staticmethod
+    def user(turn, text, item_id):
+        if item_id is None:
+            return (
+                "response_item",
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": text}],
+                    "internal_chat_message_metadata_passthrough": {"turn_id": turn},
+                },
+            )
+        return (
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": THREAD,
+                "turn_id": turn,
+                "item": {
+                    "type": "UserMessage",
+                    "id": item_id,
+                    "content": [{"type": "text", "text": text}],
+                },
+            },
+        )
+
+    @staticmethod
+    def final(turn, phase="final_answer"):
+        return (
+            "event_msg",
+            {
+                "type": "item_completed",
+                "thread_id": THREAD,
+                "turn_id": turn,
+                "item": {
+                    "type": "AgentMessage",
+                    "id": "final-" + turn,
+                    "phase": phase,
+                    "content": [{"type": "Text", "text": "fixture answer"}],
+                },
+            },
+        )
+
+    @staticmethod
+    def complete(turn):
+        return "event_msg", {"type": "task_complete", "turn_id": turn}
+
+    def extract(self, tasks, *records, **kwargs):
+        self.path.write_text(
+            "".join(
+                json.dumps({"type": kind, "payload": payload}) + "\n"
+                for kind, payload in [self.meta, *records]
+            ),
+            encoding="utf-8",
+        )
+        return extract_path(
+            self.path, tasks, thread_id=THREAD, project="/fixture-project", **kwargs
+        )
+
+    def assert_matched(self, tasks, *records):
+        matches, status = self.extract(tasks, *records)
+        self.assertEqual(status, {"state": "matched"})
+        self.assertEqual(
+            matches[tasks[0]["id"]],
+            {
+                "thread_id": THREAD,
+                "agent_turn_id": "turn-1",
+                "answer": "fixture answer",
+                "agent_completed": True,
+                "final_message_id": "final-turn-1",
+            },
+        )
+
+    def assert_ambiguous(self, tasks, *records):
+        self.assertEqual(
+            self.extract(tasks, *records),
+            ({}, {"state": "failed", "reason": "codex_turn_ambiguous"}),
+        )
+
+    def test_exact_matches_remain_supported_even_for_whitespace_and_multiple_lfs(self):
+        for sent in ("plain", "", " \t\n", "line\r\n", "line\n\n"):
+            with self.subTest(sent=sent):
+                self.assert_matched(
+                    [{"id": "one", "submitted_text": sent}],
+                    self.user("turn-1", sent, "user-1"),
+                    self.final("turn-1"),
+                    self.complete("turn-1"),
+                )
+
+    def test_fallback_preserves_leading_interior_and_other_trailing_whitespace(self):
+        sent = "\n  line one\nline  two \t\n"
+        self.assert_matched(
+            [{"id": "one", "submitted_text": sent}],
+            self.user("turn-1", sent[:-1], "user-1"),
+            self.final("turn-1"),
+            self.complete("turn-1"),
+        )
+
+    def test_fallback_rejects_other_discrepancies(self):
+        cases = (
+            ("empty result", "\n", ""),
+            ("whitespace only", " \t\n", " \t"),
+            ("CRLF minus LF", "line\r\n", "line\r"),
+            ("CRLF minus both", "line\r\n", "line"),
+            ("two LFs minus one", "line\n\n", "line\n"),
+            ("two LFs minus both", "line\n\n", "line"),
+            ("leading space", " line\n", "line"),
+            ("leading LF", "\nline\n", "line"),
+            ("interior space", "two  words\n", "two words"),
+            ("trailing space", "line \n", "line"),
+            ("trailing tab", "line\t\n", "line"),
+            ("opposite direction", "line", "line\n"),
+            ("different character", "Line\n", "line"),
+            ("other line separator", "line\u2028", "line"),
+        )
+        for label, sent, recorded in cases:
+            with self.subTest(label=label):
+                self.assertEqual(
+                    self.extract(
+                        [{"id": "one", "submitted_text": sent}],
+                        self.user("turn-1", recorded, "user-1"),
+                        self.final("turn-1"),
+                        self.complete("turn-1"),
+                    ),
+                    ({}, {"state": "pending", "reason": "codex_turn_pending"}),
+                )
+
+    def test_exact_and_fallback_candidates_in_same_turn_are_ambiguous(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        for exact_id, fallback_id in (
+            ("user-exact", "user-fallback"),
+            (None, "user-fallback"),
+            ("user-exact", None),
+            (None, None),
+        ):
+            for reverse in (False, True):
+                with self.subTest(exact_id=exact_id, fallback_id=fallback_id, reverse=reverse):
+                    users = [
+                        self.user("turn-1", "prompt\n", exact_id),
+                        self.user("turn-1", "prompt", fallback_id),
+                    ]
+                    if reverse:
+                        users.reverse()
+                    self.assert_ambiguous(
+                        [task], *users, self.final("turn-1"), self.complete("turn-1")
+                    )
+
+    def test_identical_typed_item_supersedes_legacy_user_representations(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        for body in ("prompt\n", "prompt"):
+            for typed_first in (False, True):
+                with self.subTest(body=body, typed_first=typed_first):
+                    legacy = self.user("turn-1", body, None)
+                    typed = self.user("turn-1", body, "user-1")
+                    users = [typed, legacy, legacy] if typed_first else [legacy, legacy, typed]
+                    self.assert_matched(
+                        [task], *users, self.final("turn-1"), self.complete("turn-1")
+                    )
+
+    def test_fallback_supports_legacy_user_and_final_representations(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        legacy_final = (
+            "response_item",
+            {
+                "role": "assistant",
+                "phase": "final_answer",
+                "content": [{"type": "output_text", "text": "fixture answer"}],
+                "internal_chat_message_metadata_passthrough": {"turn_id": "turn-1"},
+            },
+        )
+        user = self.user("turn-1", "prompt", None)
+        matches, status = self.extract([task], user, legacy_final, self.complete("turn-1"))
+        self.assertEqual(status, {"state": "matched"})
+        self.assertEqual(
+            matches["one"],
+            {
+                "thread_id": THREAD,
+                "agent_turn_id": "turn-1",
+                "answer": "fixture answer",
+                "agent_completed": True,
+            },
+        )
+        self.assert_matched(
+            [task], user, legacy_final, self.final("turn-1"), self.complete("turn-1")
+        )
+
+    def test_distinct_typed_user_items_with_same_body_are_ambiguous(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        for body in ("prompt", "prompt\n"):
+            with self.subTest(body=body):
+                self.assert_ambiguous(
+                    [task],
+                    self.user("turn-1", body, "user-1"),
+                    self.user("turn-1", body, "user-2"),
+                    self.final("turn-1"),
+                    self.complete("turn-1"),
+                )
+
+    def test_candidates_in_multiple_turns_are_ambiguous_even_with_exact_match(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        for first, second in (
+            ("prompt\n", "prompt"),
+            ("prompt", "prompt\n"),
+            ("prompt", "prompt"),
+            ("prompt\n", "prompt\n"),
+        ):
+            with self.subTest(first=first, second=second):
+                self.assert_ambiguous(
+                    [task],
+                    self.user("turn-1", first, "user-1"),
+                    self.final("turn-1"),
+                    self.complete("turn-1"),
+                    self.user("turn-2", second, "user-2"),
+                    self.final("turn-2"),
+                    self.complete("turn-2"),
+                )
+
+    def test_multiple_tasks_cannot_claim_one_turn_or_answer(self):
+        cases = (
+            (("prompt", "prompt"), ("prompt",)),
+            (("prompt", "prompt\n"), ("prompt",)),
+            (("prompt\n", "prompt"), ("prompt",)),
+            (("first", "second"), ("first", "second")),
+            (("prompt", "prompt\n"), ("prompt\n", "prompt")),
+        )
+        for submitted, recorded in cases:
+            with self.subTest(submitted=submitted, recorded=recorded):
+                tasks = [
+                    {"id": str(index), "submitted_text": text}
+                    for index, text in enumerate(submitted)
+                ]
+                users = [
+                    self.user("turn-1", text, "user-" + str(index))
+                    for index, text in enumerate(recorded)
+                ]
+                self.assert_ambiguous(tasks, *users, self.final("turn-1"), self.complete("turn-1"))
+
+    def test_task_collision_with_exact_match_in_another_turn_fails_closed(self):
+        tasks = [
+            {"id": "plain", "submitted_text": "prompt"},
+            {"id": "lf", "submitted_text": "prompt\n"},
+        ]
+        records = (
+            self.user("turn-1", "prompt", "user-1"),
+            self.final("turn-1"),
+            self.complete("turn-1"),
+            self.user("turn-2", "prompt\n", "user-2"),
+            self.final("turn-2"),
+            self.complete("turn-2"),
+        )
+        for ordered in (tasks, list(reversed(tasks))):
+            with self.subTest(first=ordered[0]["id"]):
+                self.assert_ambiguous(ordered, *records)
+
+    def test_fallback_uses_only_the_bound_thread(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        kind, payload = self.user("turn-1", "prompt", "user-1")
+        payload["thread_id"] = OTHER
+        self.assertEqual(
+            self.extract([task], (kind, payload), self.final("turn-1"), self.complete("turn-1")),
+            ({}, {"state": "pending", "reason": "codex_turn_pending"}),
+        )
+
+    def test_fallback_still_requires_final_phase_completion_and_selection(self):
+        task = {"id": "one", "submitted_text": "prompt\n"}
+        user = self.user("turn-1", "prompt", "user-1")
+        for records in (
+            (user, self.final("turn-1", "commentary"), self.complete("turn-1")),
+            (user, self.complete("turn-1"), self.final("turn-1")),
+            (user, self.final("turn-1")),
+        ):
+            with self.subTest(records=records):
+                matches, status = self.extract([task], *records)
+                self.assertEqual(status, {"state": "matched"})
+                self.assertFalse(matches["one"]["agent_completed"])
+        selected = {
+            **task,
+            "codex_selection": {
+                "model": "expected",
+                "thinking": "high",
+                "service_tier": "standard",
+            },
+        }
+        context = (
+            "turn_context",
+            {"turn_id": "turn-1", "model": "other", "effort": "high", "cwd": "/fixture-project"},
+        )
+        self.assertEqual(
+            self.extract([selected], context, user, self.final("turn-1"), self.complete("turn-1")),
+            ({}, {"state": "failed", "reason": "codex_turn_selection_mismatch"}),
+        )
+        self.assertEqual(
+            self.extract([selected], user, self.final("turn-1"), self.complete("turn-1")),
+            ({}, {"state": "failed", "reason": "codex_turn_selection_unconfirmed"}),
+        )
+        context[1]["model"] = "expected"
+        selected["codex_selection"]["service_tier"] = "fast"
+        self.assertEqual(
+            self.extract([selected], context, user, self.final("turn-1"), self.complete("turn-1")),
+            ({}, {"state": "failed", "reason": "codex_turn_fast_unconfirmed"}),
         )
 
 

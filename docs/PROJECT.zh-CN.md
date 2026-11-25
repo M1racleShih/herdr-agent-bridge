@@ -357,6 +357,13 @@ herdr-bridge --config /private/original-project.json decide terminate \
 `state: pending` 表示仍在等待，`state: failed` 表示原生选择核对失败。后续轮次依靠
 已绑定会话的原生证据。`execution_policy` 保存每个字段的请求值、解析值和来源。
 
+原生 Codex 在绑定线程中将原始提交文本与用户消息精确关联。另支持一个已观察到的
+窄例外：保存文本以单个 LF 结尾，而原生消息仅缺少该 LF，其余完全相同。末尾为
+CRLF、多个 LF，或去掉 LF 后为空、原输入仅含空白时不使用此回退；不删除或规范化
+其他空白。原始提交文本及其哈希保持不变。精确和回退候选一起检查：任务、轮次或
+不同用户消息存在竞争时拒绝关联，不会把同一回答分给多个任务。仍须确认原生选择、
+`final_answer` 阶段和完成顺序。
+
 Pi 要求原生 assistant 消息中的 provider/model 与启动选择一致；将虚拟模型
 路由到不同实际 provider/model 的配置会返回 `native_dispatch_mismatch`，暂不支持。
 
