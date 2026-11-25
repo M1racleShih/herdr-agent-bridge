@@ -17,7 +17,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from test_pi_evidence import two_pack_history
+from test_pi_evidence import retry_pack_history, two_pack_history
 
 from herdr_agent_bridge import agent_bridge, grok_bridge, readiness, readonly_contracts
 from herdr_agent_bridge.resource_paths import resource_path
@@ -461,6 +461,12 @@ class PiBridgeTests(unittest.TestCase):
         self.assertEqual(self.hc.count("send"), 1)
 
     def test_native_two_pack_result_still_requires_settled_and_real_registered_checks(self):
+        self.check_two_pack_verification(two_pack_history)
+
+    def test_native_retry_pack_result_still_requires_settled_and_real_registered_checks(self):
+        self.check_two_pack_verification(retry_pack_history)
+
+    def check_two_pack_verification(self, history):
         subprocess.run(["git", "init", "-q", str(self.project)], check=True)
         (self.project / "code.py").write_text("value = 0\n")
         counter = self.project / ".artifacts" / "check-count"
@@ -501,7 +507,7 @@ class PiBridgeTests(unittest.TestCase):
         )
         manager.submit("lead", "Fix the value", development_task="work")
         submitted = manager.bridge().task("lead")["submitted_text"]
-        entries = two_pack_history(submitted)
+        entries = history(submitted)
         self.write_history(bridge, entries)
         self.hc.terminal.update(turn=1, status={"state": "done"})
         settled = {
