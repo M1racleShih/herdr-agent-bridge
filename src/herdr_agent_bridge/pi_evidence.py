@@ -10,6 +10,8 @@ import json
 import math
 from pathlib import Path
 
+from herdr_agent_bridge.pi_team_evidence import continuation as team_continuation
+
 _STOP_REASONS = {"pending", "stop", "length", "toolUse", "error", "aborted", "deferred"}
 _STATE_ENTRIES = {
     "model_change",
@@ -286,7 +288,9 @@ def _extract_turns(home, tasks, *, selection=None, _audit=None):
             text = _text_content(message.get("content"))
             if text is None:
                 return _empty(_audit, "failed", _content_failure(message, {"text"}))
-            turns.append({"id": entry["id"], "text": text, "final": None, "aborted": None})
+            turns.append(
+                {"id": entry["id"], "text": text, "final": None, "aborted": None, "events": []}
+            )
         elif role == "assistant":
             valid, answer = _assistant(message)
             if not valid:
@@ -302,17 +306,21 @@ def _extract_turns(home, tasks, *, selection=None, _audit=None):
                 _audit.update(state="failed", reason="native_dispatch_mismatch")
                 return {}
             if turns:
+                turns[-1]["events"].append(message)
                 turns[-1]["final"] = (entry["id"], answer) if answer is not None else None
                 turns[-1]["aborted"] = entry["id"] if message["stopReason"] == "aborted" else None
         elif role == "toolResult":
             if not _tool_result(message):
                 return _empty(_audit, "failed", _content_failure(message, {"text", "image"}))
             if turns:
+                turns[-1]["events"].append(message)
                 turns[-1]["final"] = None
                 turns[-1]["aborted"] = None
         elif role == "system":
             if _text_content(message.get("content")) is None:
                 return _empty(_audit, "failed", _content_failure(message, {"text"}))
+            if turns:
+                turns[-1]["events"].append(message)
         else:
             reason = (
                 "native_structure_unsupported" if _nonempty(role) else "native_record_malformed"
@@ -363,6 +371,8 @@ def _extract_turns(home, tasks, *, selection=None, _audit=None):
             continue
         turn = matches[0]
         final = turn["final"]
+        if selection is not None and final is None and not turn["aborted"]:
+            final = team_continuation(turns, turns.index(turn), task, task_texts, header["cwd"])
         evidence = {
             "thread_id": header["id"],
             "agent_turn_id": turn["id"],

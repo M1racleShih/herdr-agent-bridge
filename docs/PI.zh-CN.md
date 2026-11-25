@@ -84,10 +84,24 @@ herdr-bridge manager --run .artifacts/runs/<unique-pi-run> \
 Pi 没有 Codex 风格的 turn ID，因此 `agent_turn_id` 使用真实 user entry ID，
 私有证据标记 `turn_id_source=pi_user_message_id`。
 
-只有该 user 后、下一个 user 前的最后一条有效 assistant 文本，且
-`stopReason=stop`、无待执行 tool call，才算原生响应完成。
-还须观察到 hc turn 增长及 idle/done，才返回可用结果。
-问题、任务结果和独立核验成功仍分别记录；CLI 成功或终端 done 不算任务成功。
+通常只有该 user 后、下一个 user 前的最后一条有效 assistant 文本，且
+`stopReason=stop`、无待执行 tool call，才算原生响应完成。仅针对 **native Pi
+开发任务结果**，可将严格识别的 Herdr two-pack 中 Coder 和 Cleaner 回执通知视为
+同一原始轮次的延续：线性历史必须先有与原输入及会话工作目录绑定的唯一成功
+初始化，随后在首个通知之前建立匹配的 pack／worker 绑定；匹配且非错误的工具调用及结构化
+结果还须另外佐证已接受的回执。已识别的快照包括直接结构化 resume 和观察到的
+投影形式，其他格式仍不关联；无关终端列表项不会改变绑定的 worker。
+最终结果必须属于原任务。独立输入、无法确认或不匹配的回执、问题和已有明确
+边界的最终答复均不适用。
+轮次 ID 仍是原 user entry，最终消息 ID 仍是实际 assistant entry。isolated Pi
+和普通直接轮次保持原行为。
+
+这只是核对会话记录的一致性，**不提供发送者的密码学身份认证**：能控制原生
+历史或工具输出的参与者可以伪造这些观察。关联时不会执行通知中的命令，也不会
+打开其中提到的文件。支持的记录格式不证明任务成功；变更或未知格式仍不关联。
+此外还须观察到 hc turn 增长及 idle/done，native Pi 的 settled 记录也须指向
+同一最终消息。问题、任务结果和独立核验成功仍分别记录；CLI 成功或终端 done
+不算任务成功。
 
 多会话、重复匹配、分支、fork、context edit、compaction、未知格式和中段损坏
 不会退回屏幕正则猜测。末尾未写完的记录不能完成当前任务；应观察原任务，

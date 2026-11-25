@@ -17,6 +17,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from test_pi_evidence import two_pack_history
+
 from herdr_agent_bridge import agent_bridge, grok_bridge, readiness, readonly_contracts
 from herdr_agent_bridge.resource_paths import resource_path
 
@@ -457,6 +459,89 @@ class PiBridgeTests(unittest.TestCase):
         self.assertEqual(manager.observe("first")["event_id"], second["event_id"])
         self.assertEqual(manager.outbox().get(second["event_id"])["payload"]["kind"], "agent_error")
         self.assertEqual(self.hc.count("send"), 1)
+
+    def test_native_two_pack_result_still_requires_settled_and_real_registered_checks(self):
+        subprocess.run(["git", "init", "-q", str(self.project)], check=True)
+        (self.project / "code.py").write_text("value = 0\n")
+        counter = self.project / ".artifacts" / "check-count"
+        check = (
+            "from pathlib import Path; "
+            f"p=Path({str(counter)!r}); "
+            "p.write_text(str(int(p.read_text())+1 if p.exists() else 1)); "
+            "from code import value; assert value == 2"
+        )
+        spec = {
+            "task_id": "work",
+            "goal": "Change value",
+            "allowed_paths": ["code.py"],
+            "acceptance": ["value is two"],
+            "checks": [{"name": "value", "argv": [sys.executable, "-c", check], "timeout": 10}],
+        }
+        manager = grok_bridge.Manager.create(
+            self.project / ".artifacts" / "runs" / "native-fixture",
+            self.project,
+            OWNER,
+            runner=self.hc,
+            agent="pi",
+            runtime="native",
+            development=spec,
+            model="fixture-provider/fixture-model",
+            thinking="high",
+        )
+        bridge = manager.bridge()
+        self.hc.terminal["labels"] = {"bridge_run": bridge.data["session"]}
+        self.write_json(
+            bridge.root / "pi-selection.json",
+            {
+                "state": "ready",
+                "model": "fixture-provider/fixture-model",
+                "thinking": "high",
+                "session_id": "a1901e11-820c-4473-aa3a-df22aeb17000",
+            },
+        )
+        manager.submit("lead", "Fix the value", development_task="work")
+        submitted = manager.bridge().task("lead")["submitted_text"]
+        entries = two_pack_history(submitted)
+        self.write_history(bridge, entries)
+        self.hc.terminal.update(turn=1, status={"state": "done"})
+        settled = {
+            "state": "settled",
+            "aborted": False,
+            "session_id": "a1901e11-820c-4473-aa3a-df22aeb17000",
+            "final_message_id": "different",
+        }
+        self.write_json(bridge.root / "pi-settled.json", settled)
+        self.assertNotEqual(manager.observe("lead")["task"]["observed"], "evidence_ready")
+        self.write_json(bridge.root / "pi-settled.json", {**settled, "final_message_id": "final"})
+        self.hc.terminal["turn"] = 0
+        self.assertNotEqual(manager.observe("lead")["task"]["observed"], "evidence_ready")
+        self.hc.terminal["turn"] = 1
+        observed = manager.observe("lead")["task"]
+        self.assertEqual(observed["observed"], "evidence_ready")
+        self.assertEqual(observed["evidence"]["agent_turn_id"], "original")
+        self.assertFalse(observed["verified_success"])
+        self.assertEqual(manager.bridge().task("lead")["evidence"]["final_message_id"], "final")
+
+        (self.project / "code.py").write_text("value = 1\n")
+        failed = manager.verify_development(expected_round="lead")
+        self.assertFalse(failed["passed"])
+        self.assertEqual(failed["checks"][0]["exit_code"], 1)
+        self.assertEqual(counter.read_text(), "1")
+        (self.project / "code.py").write_text("value = 2\n")
+        passed = manager.verify_development(expected_round="lead")
+        self.assertTrue(passed["passed"])
+        self.assertEqual(passed["checks"][0]["exit_code"], 0)
+        self.assertEqual(counter.read_text(), "2")
+        self.assertEqual(manager.status()["development"]["state"], "active")
+
+        # A different native final after verification requires a new review/check.
+        entries[-1]["id"] = "changed-final"
+        self.write_history(bridge, entries)
+        self.write_json(
+            bridge.root / "pi-settled.json", {**settled, "final_message_id": "changed-final"}
+        )
+        with self.assertRaises(agent_bridge.BridgeError):
+            manager.decide_development("accept", "operator", "checked previous evidence")
 
     def test_development_defaults_are_explicit_and_forwarded_to_pi(self):
         subprocess.run(["git", "init", "-q", str(self.project)], check=True)
