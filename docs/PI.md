@@ -110,14 +110,17 @@ Normally only the last valid assistant text after that user message and before
 the next, with `stopReason=stop` and no pending tool call, counts as native
 completion. For a **native Pi development result** only, a narrowly recognized
 Herdr two-pack can continue across its Coder and Cleaner receipt notifications:
-the linear history must contain an earlier pack/worker binding and separately
-corroborate the accepted receipts using matching, non-error tool calls and
-structured results in the recognized two-pack snapshot command format. Other
-notification and snapshot formats remain uncorrelated. The final must be a
-result for the original task. An independent input, uncertain or mismatched
-receipt, question, or an existing bounded final does not qualify. The original user entry remains the turn ID;
-the actual final assistant entry remains the final message ID. Isolated Pi and
-ordinary direct turns keep their existing behavior.
+the linear history must first show one successful initialization bound to the
+original input and the session's working directory, followed by a matching
+pack/worker binding before the first notification. Matching, non-error tool calls and structured results must also
+corroborate the accepted receipts. The recognized snapshots include the direct
+structured resume and the observed projected form; other formats remain
+uncorrelated. Unrelated terminal inventory entries do not change the workers.
+The final must be a result for the original task. An independent input,
+uncertain or mismatched receipt, question, or an existing bounded final does
+not qualify. The original user entry remains the turn ID; the actual final
+assistant entry remains the final message ID. Isolated Pi and ordinary direct
+turns keep their existing behavior.
 
 This checks transcript consistency, **not cryptographic sender authenticity**:
 a participant with control of native history or tool output could forge the

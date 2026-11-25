@@ -372,7 +372,7 @@ def _extract_turns(home, tasks, *, selection=None, _audit=None):
         turn = matches[0]
         final = turn["final"]
         if selection is not None and final is None and not turn["aborted"]:
-            final = team_continuation(turns, turns.index(turn), task, task_texts)
+            final = team_continuation(turns, turns.index(turn), task, task_texts, header["cwd"])
         evidence = {
             "thread_id": header["id"],
             "agent_turn_id": turn["id"],
